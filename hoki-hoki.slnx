@@ -5,4 +5,7 @@
     <Project Path="src/Hoki/Hoki.csproj" />
     <Project Path="src/SpriteUtilities/SpriteUtilities.csproj" />
   </Folder>
+  <Folder Name="/src/Editor/">
+    <Project Path="src/Editor/HokiEdit.csproj" />
+  </Folder>
 </Solution>
