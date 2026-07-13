@@ -354,3 +354,10 @@ src/Hoki/scores
 src/Hoki/user
 src/Hoki/ghosts/
 src/Hoki/levels/
+
+# Game runtime saves (written to cwd when running from the repo root)
+/scores
+/user
+
+# ImGui per-user window layout
+imgui.ini
