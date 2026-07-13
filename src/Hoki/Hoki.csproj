@@ -23,7 +23,7 @@
     <!-- Game assets, embedded with the same dotted names the original WinForms csproj produced -->
     <EmbeddedResource Include="textures/**/*.png;textures/**/*.bmp;textures/**/*.jpg;textures/**/*.dat" />
     <EmbeddedResource Include="resources/**/*.png;resources/**/*.bmp;resources/**/*.jpg;resources/**/*.dat" />
-    <EmbeddedResource Include="data/levels;data/medals;data/maps/**/*.map;data/themes/*.theme" />
+    <EmbeddedResource Include="data/levels;data/medals;data/maps/**/*.map;data/themes/*.theme;data/ghosts/*.ghost" />
     <EmbeddedResource Include="fx/*.wav" />
     <EmbeddedResource Include="fonts/*.ttf" />
   </ItemGroup>

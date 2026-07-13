@@ -348,3 +348,9 @@ MigrationBackup/
 
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
+
+# Hoki runtime save files (written next to cwd during play)
+src/Hoki/scores
+src/Hoki/user
+src/Hoki/ghosts/
+src/Hoki/levels/
