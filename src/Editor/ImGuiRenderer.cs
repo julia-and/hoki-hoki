@@ -77,18 +77,25 @@ namespace HokiEdit {
 		}
 
 		#region input
-		private static readonly (Keys xna,ImGuiKey imgui)[] keyMap={
-			(Keys.Left,ImGuiKey.LeftArrow),(Keys.Right,ImGuiKey.RightArrow),(Keys.Up,ImGuiKey.UpArrow),(Keys.Down,ImGuiKey.DownArrow),
-			(Keys.Tab,ImGuiKey.Tab),(Keys.Enter,ImGuiKey.Enter),(Keys.Escape,ImGuiKey.Escape),(Keys.Space,ImGuiKey.Space),
-			(Keys.Back,ImGuiKey.Backspace),(Keys.Delete,ImGuiKey.Delete),(Keys.Home,ImGuiKey.Home),(Keys.End,ImGuiKey.End),
-			(Keys.PageUp,ImGuiKey.PageUp),(Keys.PageDown,ImGuiKey.PageDown),(Keys.Insert,ImGuiKey.Insert),
-			(Keys.LeftControl,ImGuiKey.LeftCtrl),(Keys.RightControl,ImGuiKey.RightCtrl),
-			(Keys.LeftShift,ImGuiKey.LeftShift),(Keys.RightShift,ImGuiKey.RightShift),
-			(Keys.LeftAlt,ImGuiKey.LeftAlt),(Keys.RightAlt,ImGuiKey.RightAlt),
-			(Keys.LeftWindows,ImGuiKey.LeftSuper),(Keys.RightWindows,ImGuiKey.RightSuper),
-			(Keys.A,ImGuiKey.A),(Keys.C,ImGuiKey.C),(Keys.V,ImGuiKey.V),(Keys.X,ImGuiKey.X),(Keys.Y,ImGuiKey.Y),(Keys.Z,ImGuiKey.Z),
-			(Keys.S,ImGuiKey.S),(Keys.N,ImGuiKey.N),(Keys.O,ImGuiKey.O)
-		};
+		private static readonly (Keys xna,ImGuiKey imgui)[] keyMap=buildKeyMap();
+
+		private static (Keys,ImGuiKey)[] buildKeyMap() {
+			var map=new List<(Keys,ImGuiKey)>{
+				(Keys.Left,ImGuiKey.LeftArrow),(Keys.Right,ImGuiKey.RightArrow),(Keys.Up,ImGuiKey.UpArrow),(Keys.Down,ImGuiKey.DownArrow),
+				(Keys.Tab,ImGuiKey.Tab),(Keys.Enter,ImGuiKey.Enter),(Keys.Escape,ImGuiKey.Escape),(Keys.Space,ImGuiKey.Space),
+				(Keys.Back,ImGuiKey.Backspace),(Keys.Delete,ImGuiKey.Delete),(Keys.Home,ImGuiKey.Home),(Keys.End,ImGuiKey.End),
+				(Keys.PageUp,ImGuiKey.PageUp),(Keys.PageDown,ImGuiKey.PageDown),(Keys.Insert,ImGuiKey.Insert),
+				(Keys.LeftControl,ImGuiKey.LeftCtrl),(Keys.RightControl,ImGuiKey.RightCtrl),
+				(Keys.LeftShift,ImGuiKey.LeftShift),(Keys.RightShift,ImGuiKey.RightShift),
+				(Keys.LeftAlt,ImGuiKey.LeftAlt),(Keys.RightAlt,ImGuiKey.RightAlt),
+				(Keys.LeftWindows,ImGuiKey.LeftSuper),(Keys.RightWindows,ImGuiKey.RightSuper),
+				(Keys.OemComma,ImGuiKey.Comma),(Keys.OemPeriod,ImGuiKey.Period)
+			};
+			//All letters and digits (both enums are contiguous)
+			for (int i=0;i<26;i++) map.Add((Keys.A+i,ImGuiKey.A+i));
+			for (int i=0;i<10;i++) map.Add((Keys.D0+i,ImGuiKey._0+i));
+			return map.ToArray();
+		}
 
 		public void Update(GameTime time) {
 			var io=ImGui.GetIO();

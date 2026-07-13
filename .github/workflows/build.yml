@@ -1,0 +1,30 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # Build each project explicitly (the .slnx solution needs a newer SDK than 8)
+      - run: dotnet build src/FloatMath -c Release
+      - run: dotnet build src/SpriteUtilities -c Release
+      - run: dotnet build src/Hoki -c Release
+      - run: dotnet build src/Editor -c Release
+
+      # Map format smoke test: parse -> serialize -> reparse every original map.
+      # Runs headless (no window is created in --roundtrip mode).
+      - run: dotnet run --project src/Editor -c Release --no-build -- --roundtrip src/Hoki/data/maps/maingame

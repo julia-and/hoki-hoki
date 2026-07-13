@@ -97,6 +97,8 @@ namespace Hoki {
 			playerButton;	//Player button corresponding to the player currently in use
 		private SpriteTexture
 			blankTex;
+		private Level
+			playtestLevel;	//Set when a map path was passed on the command line
 		private Song
 			currentSong;	//Song being played
 		private bool
@@ -383,7 +385,7 @@ namespace Hoki {
 		#endregion
 
 		#region construct/initialize
-		public Game() {
+		public Game(string[] args=null) {
 			//Set up the window (fixed 640x480, like the original)
 			graphics=new GraphicsDeviceManager(this);
 			graphics.PreferredBackBufferWidth=640;
@@ -590,6 +592,14 @@ namespace Hoki {
 			KeyPress+=new KeyPressEventHandler((s,e)=>{});	//Never null, like the AnyKey events
 			Window.TextInput+=(s,e)=>KeyPress(this,new KeyPressEventArgs(e.Character));
 
+			//Playtest: a .map path as the first argument loads that map directly
+			if (args!=null && args.Length>=1 && File.Exists(args[0])) {
+				string mapText=File.ReadAllText(args[0]);
+				playtestLevel=new Level(StringCrypt.MD5(mapText));
+				playtestLevel.GameMap=mapText;
+				playtestLevel.Name=Path.GetFileNameWithoutExtension(args[0]);
+			}
+
 			//Load sound effects (SoundEffect.Play spawns a new voice per call, so one instance per effect suffices)
 			FXVolume=Song.Volume/100f;
 			Explosion.Sound=loadSfx("Hoki.fx.explosion.wav");
@@ -648,6 +658,14 @@ namespace Hoki {
 		}
 
 		private void initializeGame() {
+			//Playtest mode (map path passed on the command line, e.g. from the level editor):
+			//skip the intro and jump straight into the map with a throwaway profile.
+			if (playtestLevel!=null) {
+				player=new Player("playtest");	//Not added to players, so it is never written to disk
+				play(playtestLevel);
+				return;
+			}
+
 			//Set the game state to the flecko.net intro
 			setGameState(GameState.Flecko);
 		}
@@ -2405,6 +2423,12 @@ namespace Hoki {
 
 			//Try to generate a map
 			if (!generateMap()) {
+				if (gameState==GameState.None) {
+					//Playtest launch with a bad map: no menu exists to show the error in
+					Console.Error.WriteLine("playtest: the map cannot be read; it may be invalid or corrupted");
+					Exit();
+					return;
+				}
 				error("The map you selected cannot be read. It may be invalid or corrupted.");
 				return;
 			}
@@ -3008,8 +3032,8 @@ namespace Hoki {
 		/// The main entry point for the application.
 		/// </summary>
 		[STAThread]
-		static void Main() {
-			using (Game game=new Game()) {
+		static void Main(string[] args) {
+			using (Game game=new Game(args)) {
 				game.Run();
 			}
 		}

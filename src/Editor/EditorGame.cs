@@ -247,6 +247,8 @@ namespace HokiEdit {
 					if (ImGui.MenuItem("Save","Ctrl+S",false,true)) menuSave();
 					if (ImGui.MenuItem("Save As...")) { browserOpen=true; browserSave=true; }
 					ImGui.Separator();
+					if (ImGui.MenuItem("Playtest","Ctrl+P")) playtest();
+					ImGui.Separator();
 					if (ImGui.MenuItem("Quit","Ctrl+Q")) Exit();
 					ImGui.EndMenu();
 				}
@@ -280,6 +282,7 @@ namespace HokiEdit {
 			if (io.KeyCtrl) {
 				if (ImGui.IsKeyPressed(ImGuiKey.S)) menuSave();
 				if (ImGui.IsKeyPressed(ImGuiKey.O)) { browserOpen=true; browserSave=false; }
+				if (ImGui.IsKeyPressed(ImGuiKey.P)) playtest();
 				if (ImGui.IsKeyPressed(ImGuiKey.Z) && !io.KeyShift && undoStack.CanUndo) { doc=undoStack.Undo(doc); selection.Clear(); dirty=true; }
 				if (ImGui.IsKeyPressed(ImGuiKey.Z) && io.KeyShift && undoStack.CanRedo) { doc=undoStack.Redo(doc); selection.Clear(); dirty=true; }
 				if (ImGui.IsKeyPressed(ImGuiKey.Q)) Exit();
@@ -301,6 +304,39 @@ namespace HokiEdit {
 		private void menuSave() {
 			if (currentPath!=null) saveMapFile(currentPath);
 			else { browserOpen=true; browserSave=true; }
+		}
+
+		/// <summary>
+		/// Saves the working map to a temp file and launches the game on it.
+		/// </summary>
+		private void playtest() {
+			try {
+				string tmp=Path.Combine(Path.GetTempPath(),"hokiedit-playtest.map");
+				File.WriteAllText(tmp,doc.Serialize());
+
+				string gameDir=findGameDir();
+				if (gameDir==null) {
+					parseErrors=new List<string>{ "playtest: game binary not found — build src/Hoki first (dotnet build src/Hoki)" };
+					return;
+				}
+				string exe=Path.Combine(gameDir,OperatingSystem.IsWindows()?"Hoki.exe":"Hoki");
+				System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo{
+					FileName=exe,
+					Arguments="\""+tmp+"\"",
+					WorkingDirectory=gameDir	//So config/scores/levels resolve like a normal run
+				});
+			} catch (Exception e) {
+				parseErrors=new List<string>{ "playtest failed: "+e.Message };
+			}
+		}
+
+		private static string findGameDir() {
+			//Editor and game live in sibling project dirs; probe both configurations
+			foreach (string cfg in new[]{"Debug","Release"}) {
+				string dir=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,$"../../../../Hoki/bin/{cfg}/net8.0"));
+				if (File.Exists(Path.Combine(dir,OperatingSystem.IsWindows()?"Hoki.exe":"Hoki"))) return dir;
+			}
+			return null;
 		}
 
 		private void fitView() {
