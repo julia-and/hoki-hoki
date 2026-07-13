@@ -13,7 +13,7 @@ namespace HokiEdit {
 	/// HokiEdit rewrite: MonoGame window, Dear ImGui chrome, schematic canvas.
 	/// The canvas draws entirely through ImGui's background draw list.
 	/// </summary>
-	public class EditorGame : Game {
+	public partial class EditorGame : Game {
 		private GraphicsDeviceManager graphics;
 		private ImGuiRenderer imgui;
 
@@ -34,6 +34,7 @@ namespace HokiEdit {
 
 		private bool settingsOpen;
 		private string screenshotPath=null;	//--screenshot mode
+		private int frameCount;
 
 		private const int Unit=8;	//map file unit -> pixels
 
@@ -95,7 +96,9 @@ namespace HokiEdit {
 			imgui.Update(gameTime);
 
 			handleCanvasInput();
+			toolInput();
 			drawCanvas();
+			drawOverlays();
 			drawUI();
 
 			GraphicsDevice.Clear(new Color(245,245,245));
@@ -103,7 +106,8 @@ namespace HokiEdit {
 
 			base.Draw(gameTime);
 
-			if (screenshotPath!=null) {
+			//ImGui auto-resize windows need a frame to measure, so capture the second frame
+			if (screenshotPath!=null && ++frameCount>=2) {
 				saveBackbuffer(screenshotPath);
 				Exit();
 			}
@@ -247,8 +251,15 @@ namespace HokiEdit {
 					ImGui.EndMenu();
 				}
 				if (ImGui.BeginMenu("Edit")) {
-					if (ImGui.MenuItem("Undo","Ctrl+Z",false,undoStack.CanUndo)) { doc=undoStack.Undo(doc); dirty=true; }
-					if (ImGui.MenuItem("Redo","Ctrl+Shift+Z",false,undoStack.CanRedo)) { doc=undoStack.Redo(doc); dirty=true; }
+					if (ImGui.MenuItem("Undo","Ctrl+Z",false,undoStack.CanUndo)) { doc=undoStack.Undo(doc); selection.Clear(); dirty=true; }
+					if (ImGui.MenuItem("Redo","Ctrl+Shift+Z",false,undoStack.CanRedo)) { doc=undoStack.Redo(doc); selection.Clear(); dirty=true; }
+					ImGui.Separator();
+					if (ImGui.MenuItem("Copy","Ctrl+C",false,selection.Count>0)) copySelection();
+					if (ImGui.MenuItem("Paste","Ctrl+V",false,clipboard!=null)) pasteClipboard(screenToWorld(ImGui.GetIO().DisplaySize/2));
+					if (ImGui.MenuItem("Delete","Del",false,selection.Count>0)) deleteSelection();
+					ImGui.Separator();
+					if (ImGui.MenuItem("Flip Horizontal",null,false,selection.Count>0)) flipSelection(true);
+					if (ImGui.MenuItem("Flip Vertical",null,false,selection.Count>0)) flipSelection(false);
 					ImGui.Separator();
 					if (ImGui.MenuItem("Map Settings...")) settingsOpen=true;
 					ImGui.EndMenu();
@@ -269,8 +280,8 @@ namespace HokiEdit {
 			if (io.KeyCtrl) {
 				if (ImGui.IsKeyPressed(ImGuiKey.S)) menuSave();
 				if (ImGui.IsKeyPressed(ImGuiKey.O)) { browserOpen=true; browserSave=false; }
-				if (ImGui.IsKeyPressed(ImGuiKey.Z) && !io.KeyShift && undoStack.CanUndo) { doc=undoStack.Undo(doc); dirty=true; }
-				if (ImGui.IsKeyPressed(ImGuiKey.Z) && io.KeyShift && undoStack.CanRedo) { doc=undoStack.Redo(doc); dirty=true; }
+				if (ImGui.IsKeyPressed(ImGuiKey.Z) && !io.KeyShift && undoStack.CanUndo) { doc=undoStack.Undo(doc); selection.Clear(); dirty=true; }
+				if (ImGui.IsKeyPressed(ImGuiKey.Z) && io.KeyShift && undoStack.CanRedo) { doc=undoStack.Redo(doc); selection.Clear(); dirty=true; }
 				if (ImGui.IsKeyPressed(ImGuiKey.Q)) Exit();
 			}
 
@@ -372,6 +383,23 @@ namespace HokiEdit {
 		#endregion
 
 		static void Main(string[] args) {
+			//--roundtrip <dir>: parse+serialize every .map twice, verify stability. CI/self-check, no window.
+			if (args.Length>=2 && args[0]=="--roundtrip") {
+				int bad=0;
+				foreach (string f in Directory.GetFiles(args[1],"*.map")) {
+					var d1=MapDocument.Parse(File.ReadAllText(f),out var errs);
+					string s1=d1.Serialize();
+					var d2=MapDocument.Parse(s1,out var errs2);
+					string s2=d2.Serialize();
+					bool stable=s1==s2 && errs2.Count==0;
+					bool counts=d1.Nodes.Count==d2.Nodes.Count&&d1.Walls.Count==d2.Walls.Count&&d1.Tris.Count==d2.Tris.Count
+						&&d1.Pads.Count==d2.Pads.Count&&d1.Springs.Count==d2.Springs.Count&&d1.Launchers.Count==d2.Launchers.Count&&d1.Decals.Count==d2.Decals.Count;
+					Console.WriteLine($"{Path.GetFileName(f)}: {(stable&&counts?"OK":"FAIL")} ({d1.Nodes.Count}n {d1.Walls.Count}w {d1.Tris.Count}t {d1.Pads.Count}p {d1.Springs.Count}s {d1.Launchers.Count}l {d1.Decals.Count}d){(errs.Count>0?$" [{errs.Count} load warnings]":"")}");
+					if (!(stable&&counts)) bad++;
+				}
+				Environment.Exit(bad==0?0:1);
+			}
+
 			using var game=new EditorGame(args);
 			game.Run();
 		}
