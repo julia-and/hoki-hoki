@@ -5,7 +5,7 @@ using ImGuiNET;
 using NVec2=System.Numerics.Vector2;
 
 namespace HokiEdit {
-	public enum Tool { Select, Node, Wall, Tri, Pad, Spring, Launcher, Pencil, Decal }
+	public enum Tool { Select, Node, Wall, Tri, Pad, Spring, Launcher, Pencil, Decal, Curve }
 
 	public enum Kind { Node, Wall, Tri, Pad, Spring, Launcher, Decal }
 
@@ -23,6 +23,8 @@ namespace HokiEdit {
 		private int pendingDecalIndex=0;
 		private float pendingDecalDepth=1f;
 		private int pencilLastNode=-1;
+		private readonly List<NVec2> curvePoints=new();	//Curve tool: control points (world px, grid-snapped)
+		private int curveSpacing=6;						//Node spacing along the curve, map units
 
 		//Drag state
 		private bool draggingSel, boxSelecting;
@@ -38,6 +40,7 @@ namespace HokiEdit {
 			triPicks.Clear();
 			launcherSender=-1;
 			pencilLastNode=-1;
+			curvePoints.Clear();
 			draggingSel=boxSelecting=false;
 		}
 		#endregion
@@ -217,22 +220,125 @@ namespace HokiEdit {
 			foreach (int n in nodeSet) { doc.Nodes[n].X+=dx; doc.Nodes[n].Y+=dy; }
 		}
 
+		/// <summary>
+		/// Mirrors the selection about its bounding-box axis: positions for everything,
+		/// plus facing directions for springs (quarter-turns) and launchers (eighth-turns).
+		/// Pads mirror as points (their 196px box still extends right/down).
+		/// </summary>
 		private void flipSelection(bool horizontal) {
+			if (selection.Count==0) return;
 			var nodeSet=new HashSet<int>();
-			foreach (var e in selection)
+			var points=new List<(Func<(float x,float y)> get,Action<int,int> set)>();
+			foreach (var e in selection) {
 				switch (e.K) {
 					case Kind.Node: nodeSet.Add(e.I); break;
 					case Kind.Wall: nodeSet.Add(doc.Walls[e.I].A); nodeSet.Add(doc.Walls[e.I].B); break;
 					case Kind.Tri: nodeSet.Add(doc.Tris[e.I].A); nodeSet.Add(doc.Tris[e.I].B); nodeSet.Add(doc.Tris[e.I].C); break;
+					case Kind.Pad: { var p=doc.Pads[e.I]; points.Add((()=>(p.X,p.Y),(x,y)=>{p.X=x;p.Y=y;})); break; }
+					case Kind.Spring: { var s=doc.Springs[e.I]; points.Add((()=>(s.X,s.Y),(x,y)=>{s.X=x;s.Y=y;})); break; }
+					case Kind.Launcher: {
+						var l=doc.Launchers[e.I];
+						points.Add((()=>(l.SX,l.SY),(x,y)=>{l.SX=x;l.SY=y;}));
+						points.Add((()=>(l.CX,l.CY),(x,y)=>{l.CX=x;l.CY=y;}));
+						break;
+					}
+					case Kind.Decal: { var d=doc.Decals[e.I]; points.Add((()=>(d.X/2f,d.Y/2f),(x,y)=>{d.X=x*2;d.Y=y*2;})); break; }
 				}
-			if (nodeSet.Count<2) return;
+			}
+			foreach (int n in nodeSet) { var node=doc.Nodes[n]; points.Add((()=>(node.X,node.Y),(x,y)=>{node.X=x;node.Y=y;})); }
+			if (points.Count<2) return;
+
+			float min=points.Min(p=>horizontal?p.get().x:p.get().y);
+			float max=points.Max(p=>horizontal?p.get().x:p.get().y);
 			snapshot();
-			if (horizontal) {
-				int min=nodeSet.Min(n=>doc.Nodes[n].X), max=nodeSet.Max(n=>doc.Nodes[n].X);
-				foreach (int n in nodeSet) doc.Nodes[n].X=min+max-doc.Nodes[n].X;
-			} else {
-				int min=nodeSet.Min(n=>doc.Nodes[n].Y), max=nodeSet.Max(n=>doc.Nodes[n].Y);
-				foreach (int n in nodeSet) doc.Nodes[n].Y=min+max-doc.Nodes[n].Y;
+			foreach (var p in points) {
+				var (x,y)=p.get();
+				if (horizontal) p.set((int)MathF.Round(min+max-x),(int)MathF.Round(y));
+				else p.set((int)MathF.Round(x),(int)MathF.Round(min+max-y));
+			}
+
+			//Mirror facings: turns measured clockwise from up
+			foreach (var e in selection) {
+				if (e.K==Kind.Spring) {
+					var s=doc.Springs[e.I];
+					int t=((s.Turns%4)+4)%4;	//Legacy maps carry 4-7; normalize
+					s.Turns=horizontal?(4-t)%4:(6-t)%4;
+				} else if (e.K==Kind.Launcher) {
+					var l=doc.Launchers[e.I];
+					l.STurns=horizontal?(8-l.STurns%8)%8:(12-l.STurns%8+8)%8;
+					l.CTurns=horizontal?(8-l.CTurns%8)%8:(12-l.CTurns%8+8)%8;
+				}
+			}
+		}
+
+		/// <summary>Centripetal-free Catmull-Rom point on the p1..p2 span.</summary>
+		private static NVec2 catmullRom(NVec2 p0,NVec2 p1,NVec2 p2,NVec2 p3,float t) {
+			float t2=t*t,t3=t2*t;
+			return 0.5f*(2*p1+(-p0+p2)*t+(2*p0-5*p1+4*p2-p3)*t2+(-p0+3*p1-3*p2+p3)*t3);
+		}
+
+		/// <summary>
+		/// Samples a Catmull-Rom spline through the control points, ~spacing world px between samples.
+		/// </summary>
+		private static List<NVec2> tessellateCurve(List<NVec2> pts,float spacing) {
+			var res=new List<NVec2>();
+			if (pts.Count<2) return res;
+			res.Add(pts[0]);
+			for (int i=0;i<pts.Count-1;i++) {
+				NVec2 p0=pts[Math.Max(i-1,0)],p1=pts[i],p2=pts[i+1],p3=pts[Math.Min(i+2,pts.Count-1)];
+				int steps=Math.Max(1,(int)MathF.Ceiling((p2-p1).Length()/spacing));
+				for (int s=1;s<=steps;s++) res.Add(catmullRom(p0,p1,p2,p3,s/(float)steps));
+			}
+			return res;
+		}
+
+		/// <summary>Bakes the pending curve into the regular node+wall chain.</summary>
+		private void commitCurve() {
+			if (curvePoints.Count<2) { curvePoints.Clear(); return; }
+			snapshot();
+			int prev=-1;
+			foreach (var p in tessellateCurve(curvePoints,curveSpacing*Unit)) {
+				int n=addNode((int)MathF.Round(p.X/Unit),(int)MathF.Round(p.Y/Unit));
+				if (prev>=0&&n!=prev) addWall(prev,n);
+				prev=n;
+			}
+			curvePoints.Clear();
+		}
+
+		/// <summary>
+		/// Scales the selection about its centroid. Coordinates are ints, so repeated
+		/// scaling accumulates rounding drift; fine for layout work.
+		/// </summary>
+		private void scaleSelection(float f) {
+			if (selection.Count==0) return;
+
+			//Gather everything with a position: nodes (own + wall/tri endpoints) and point objects
+			var nodeSet=new HashSet<int>();
+			var points=new List<(Func<(float x,float y)> get,Action<int,int> set)>();
+			foreach (var e in selection) {
+				switch (e.K) {
+					case Kind.Node: nodeSet.Add(e.I); break;
+					case Kind.Wall: nodeSet.Add(doc.Walls[e.I].A); nodeSet.Add(doc.Walls[e.I].B); break;
+					case Kind.Tri: nodeSet.Add(doc.Tris[e.I].A); nodeSet.Add(doc.Tris[e.I].B); nodeSet.Add(doc.Tris[e.I].C); break;
+					case Kind.Pad: { var p=doc.Pads[e.I]; points.Add((()=>(p.X,p.Y),(x,y)=>{p.X=x;p.Y=y;})); break; }
+					case Kind.Spring: { var s=doc.Springs[e.I]; points.Add((()=>(s.X,s.Y),(x,y)=>{s.X=x;s.Y=y;})); break; }
+					case Kind.Launcher: {
+						var l=doc.Launchers[e.I];
+						points.Add((()=>(l.SX,l.SY),(x,y)=>{l.SX=x;l.SY=y;}));
+						points.Add((()=>(l.CX,l.CY),(x,y)=>{l.CX=x;l.CY=y;}));
+						break;
+					}
+					case Kind.Decal: { var d=doc.Decals[e.I]; points.Add((()=>(d.X/2f,d.Y/2f),(x,y)=>{d.X=x*2;d.Y=y*2;})); break; }	//4px units
+				}
+			}
+			foreach (int n in nodeSet) { var node=doc.Nodes[n]; points.Add((()=>(node.X,node.Y),(x,y)=>{node.X=x;node.Y=y;})); }
+			if (points.Count<2) return;
+
+			float cx=points.Average(p=>p.get().x), cy=points.Average(p=>p.get().y);
+			snapshot();
+			foreach (var p in points) {
+				var (x,y)=p.get();
+				p.set((int)MathF.Round(cx+(x-cx)*f),(int)MathF.Round(cy+(y-cy)*f));
 			}
 		}
 		#endregion
@@ -303,9 +409,9 @@ namespace HokiEdit {
 			var io=ImGui.GetIO();
 			if (screenshotPath!=null) return;
 
-			//Tool hotkeys (original scheme) + edit chords
+			//Tool hotkeys (original scheme); edit chords live in drawUI's shortcut block
 			if (!io.WantCaptureKeyboard) {
-				if (!io.KeyCtrl) {
+				if (!io.KeyCtrl && !io.KeySuper) {
 					if (ImGui.IsKeyPressed(ImGuiKey.Z,false)) switchTool(Tool.Select);
 					if (ImGui.IsKeyPressed(ImGuiKey.X,false)) switchTool(Tool.Node);
 					if (ImGui.IsKeyPressed(ImGuiKey.C,false)) switchTool(Tool.Wall);
@@ -315,7 +421,19 @@ namespace HokiEdit {
 					if (ImGui.IsKeyPressed(ImGuiKey.M,false)) switchTool(Tool.Launcher);
 					if (ImGui.IsKeyPressed(ImGuiKey.Comma,false)) switchTool(Tool.Pencil);
 					if (ImGui.IsKeyPressed(ImGuiKey.Period,false)) switchTool(Tool.Decal);
+					if (ImGui.IsKeyPressed(ImGuiKey.K,false)) switchTool(Tool.Curve);
 					if (ImGui.IsKeyPressed(ImGuiKey.Delete,false)||ImGui.IsKeyPressed(ImGuiKey.Backspace,false)) deleteSelection();
+
+					//Heli mockup: H toggles, Q/E rotate, G pins/unpins at the cursor
+					if (ImGui.IsKeyPressed(ImGuiKey.H,false)) heliMockup=!heliMockup;
+					if (heliMockup) {
+						if (ImGui.IsKeyPressed(ImGuiKey.Q)) heliMockupAngle-=MathF.PI/12;
+						if (ImGui.IsKeyPressed(ImGuiKey.E)) heliMockupAngle+=MathF.PI/12;
+						if (ImGui.IsKeyPressed(ImGuiKey.G,false)) {
+							heliPinned=!heliPinned;
+							if (heliPinned) heliPinPos=screenToWorld(io.MousePos);
+						}
+					}
 
 					//WASD nudge selection: 1 unit, Shift=6 units (original 8px/48px)
 					int step=io.KeyShift?6:1;
@@ -325,9 +443,6 @@ namespace HokiEdit {
 					if (ImGui.IsKeyPressed(ImGuiKey.W)) ny-=step;
 					if (ImGui.IsKeyPressed(ImGuiKey.S)) ny+=step;
 					if ((nx!=0||ny!=0)&&selection.Count>0) { snapshot(); moveSelection(nx,ny); }
-				} else {
-					if (ImGui.IsKeyPressed(ImGuiKey.C,false)) copySelection();
-					if (ImGui.IsKeyPressed(ImGuiKey.V,false)) pasteClipboard(screenToWorld(io.MousePos));
 				}
 			}
 
@@ -390,8 +505,8 @@ namespace HokiEdit {
 					if (click) { snapshot(); doc.Springs.Add(new Spring{X=ux,Y=uy,Turns=pendingSpringTurns}); }
 					if (rclick) {
 						int s=hitSpringAt(world);
-						if (s>=0) { snapshot(); doc.Springs[s].Turns=(doc.Springs[s].Turns+2)%8; }
-						else pendingSpringTurns=(pendingSpringTurns+2)%8;	//90 deg = 2 eighth-turns
+						if (s>=0) { snapshot(); doc.Springs[s].Turns=(doc.Springs[s].Turns+1)%4; }
+						else pendingSpringTurns=(pendingSpringTurns+1)%4;	//Spring turns are quarter-turns (launchers use eighth-turns)
 					}
 					break;
 
@@ -429,6 +544,17 @@ namespace HokiEdit {
 						}
 					}
 					if (release) pencilLastNode=-1;
+					break;
+
+				case Tool.Curve:
+					if (click) curvePoints.Add(new NVec2(ux*Unit,uy*Unit));
+					if (rclick&&curvePoints.Count>0) curvePoints.RemoveAt(curvePoints.Count-1);
+					if (ImGui.IsKeyPressed(ImGuiKey.Enter,false)||ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) {
+						//A double-click's second click just added a duplicate point; drop it
+						if (curvePoints.Count>=2&&(curvePoints[^1]-curvePoints[^2]).Length()<Unit) curvePoints.RemoveAt(curvePoints.Count-1);
+						commitCurve();
+					}
+					if (ImGui.IsKeyPressed(ImGuiKey.Escape,false)) curvePoints.Clear();
 					break;
 
 				case Tool.Decal:
@@ -512,6 +638,26 @@ namespace HokiEdit {
 			uint selCol=rgba(255,120,0);
 			NVec2 world=screenToWorld(io.MousePos);
 
+			//Playtest trace: one polyline per attempt, latest brightest
+			if (showTrace) {
+				refreshTrace();
+				for (int s=0;s<traceSegments.Count;s++) {
+					var seg=traceSegments[s];
+					byte alpha=(byte)(s==traceSegments.Count-1?200:70);
+					uint col=rgba(220,40,160,alpha);
+					for (int i=1;i<seg.Count;i++)
+						dl.AddLine(worldToScreen(seg[i-1].P.X,seg[i-1].P.Y),worldToScreen(seg[i].P.X,seg[i].P.Y),col,2);
+				}
+				drawTracePlayback(dl,io);
+			}
+
+			//Heli mockup: actual-size (128x12) outline, Q/E rotates, G pins to the map
+			if (heliMockup&&(heliPinned||!io.WantCaptureMouse)) {
+				NVec2 center=heliPinned?worldToScreen(heliPinPos.X,heliPinPos.Y):io.MousePos;
+				drawHeliOutline(dl,center,heliMockupAngle,rgba(200,30,30,220));
+				dl.AddText(new NVec2(center.X+10,center.Y+12),rgba(200,30,30,180),heliPinned?"G unpins, Q/E rotate":"G pins, Q/E rotate");
+			}
+
 			//Selection highlights
 			foreach (var e in selection) {
 				switch (e.K) {
@@ -542,6 +688,15 @@ namespace HokiEdit {
 				}
 				if (tool==Tool.Launcher&&launcherSender>=0&&launcherSender<doc.Launchers.Count)
 					dl.AddLine(worldToScreen(doc.Launchers[launcherSender].SX*Unit,doc.Launchers[launcherSender].SY*Unit),io.MousePos,prev,2);
+				if (tool==Tool.Curve&&curvePoints.Count>0) {
+					//Live spline through placed points plus the cursor
+					var pts=new List<NVec2>(curvePoints){ screenToWorld(io.MousePos) };
+					var fine=tessellateCurve(pts,curveSpacing*Unit/4f);	//Oversampled for a smooth preview
+					for (int i=1;i<fine.Count;i++)
+						dl.AddLine(worldToScreen(fine[i-1].X,fine[i-1].Y),worldToScreen(fine[i].X,fine[i].Y),prev,2);
+					foreach (var p in curvePoints)
+						dl.AddCircleFilled(worldToScreen(p.X,p.Y),4,prev);
+				}
 			}
 
 			//Toolbar
@@ -556,6 +711,7 @@ namespace HokiEdit {
 			toolButton("Launcher (M)",Tool.Launcher);
 			toolButton("Pencil (,)",Tool.Pencil);
 			toolButton("Decal (.)",Tool.Decal);
+			toolButton("Curve (K)",Tool.Curve);
 			ImGui.Separator();
 			switch (tool) {
 				case Tool.Pad: ImGui.TextDisabled($"type: {pendingPadType switch{0=>"START",2=>"HEAL",_=>"END"}}\nright-click cycles"); break;
@@ -563,6 +719,11 @@ namespace HokiEdit {
 				case Tool.Launcher: ImGui.TextDisabled($"turns: {pendingLauncherTurns}\nclick sender, then catcher\nright-click rotates"); break;
 				case Tool.Decal: ImGui.TextDisabled($"index {pendingDecalIndex} depth {pendingDecalDepth:0.00}\nalt+wheel index\nshift+wheel depth"); break;
 				case Tool.Wall: ImGui.TextDisabled("click two nodes\nshift chains"); break;
+				case Tool.Curve:
+					ImGui.TextDisabled($"{curvePoints.Count} points\nclick places, right-click removes\nEnter/double-click commits\nEsc cancels");
+					ImGui.SetNextItemWidth(90);
+					ImGui.SliderInt("spacing",ref curveSpacing,3,12);
+					break;
 				case Tool.Tri: ImGui.TextDisabled("click three nodes\nshift fans"); break;
 				case Tool.Select: ImGui.TextDisabled($"{selection.Count} selected\nshift multi, drag moves\nWASD nudges, Del deletes"); break;
 			}
@@ -575,6 +736,54 @@ namespace HokiEdit {
 				if (ImGui.SliderInt("freq %",ref f,0,100)) { l.FreqPct=f; dirty=true; }
 				if (ImGui.SliderInt("offset %",ref o,0,100)) { l.OffPct=o; dirty=true; }
 			}
+			ImGui.End();
+		}
+
+		/// <summary>Actual-size heli footprint (128x12 world px) rotated about its center.</summary>
+		private void drawHeliOutline(ImDrawListPtr dl,NVec2 screenCenter,float angle,uint col) {
+			float hw=64*zoom,hh=6*zoom;	//Half extents
+			float cos=MathF.Cos(angle),sin=MathF.Sin(angle);
+			NVec2 rot(float x,float y)=>new NVec2(screenCenter.X+x*cos-y*sin,screenCenter.Y+x*sin+y*cos);
+			dl.AddQuad(rot(-hw,-hh),rot(hw,-hh),rot(hw,hh),rot(-hw,hh),col,2);
+			dl.AddLine(rot(hw*0.4f,0),rot(hw,0),col,2);	//Nose marker
+		}
+
+		/// <summary>Pseudo-ghost: scrub/play the recorded heli through the traced attempt.</summary>
+		private void drawTracePlayback(ImDrawListPtr dl,ImGuiIOPtr io) {
+			if (traceSegments.Count==0) return;
+
+			int att=traceAttempt<0?traceSegments.Count-1:Math.Clamp(traceAttempt,0,traceSegments.Count-1);
+			var seg=traceSegments[att];
+
+			if (tracePlaying) {
+				traceFrame+=io.DeltaTime*60;	//Samples are ~one per 60fps frame
+				if (traceFrame>=seg.Count-1) { traceFrame=seg.Count-1; tracePlaying=false; }
+			}
+			traceFrame=Math.Clamp(traceFrame,0,seg.Count-1);
+
+			//Ghost heli at the playback position
+			var s=seg[(int)traceFrame];
+			uint gCol=rgba(220,40,160,230);
+			drawHeliOutline(dl,worldToScreen(s.P.X,s.P.Y),s.R,gCol);
+
+			//Transport controls
+			ImGui.SetNextWindowPos(new NVec2(8,io.DisplaySize.Y-110),ImGuiCond.FirstUseEver);
+			ImGui.Begin("Ghost",ImGuiWindowFlags.AlwaysAutoResize|ImGuiWindowFlags.NoCollapse);
+			if (traceSegments.Count>1) {
+				int a=att+1;
+				if (ImGui.SliderInt("attempt",ref a,1,traceSegments.Count)) { traceAttempt=a-1; traceFrame=0; }
+			}
+			if (ImGui.Button("|<")) { traceFrame=0; tracePlaying=false; }
+			ImGui.SameLine();
+			if (ImGui.Button(tracePlaying?"Pause":"Play")) {
+				if (!tracePlaying&&traceFrame>=seg.Count-1) traceFrame=0;	//Play from start when at the end
+				tracePlaying=!tracePlaying;
+			}
+			ImGui.SameLine();
+			ImGui.TextDisabled($"{traceFrame/60f:0.00}s / {(seg.Count-1)/60f:0.00}s");
+			int f=(int)traceFrame;
+			ImGui.SetNextItemWidth(260);
+			if (ImGui.SliderInt("##frame",ref f,0,seg.Count-1)) traceFrame=f;
 			ImGui.End();
 		}
 

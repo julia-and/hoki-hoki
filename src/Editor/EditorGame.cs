@@ -36,7 +36,30 @@ namespace HokiEdit {
 		private string screenshotPath=null;	//--screenshot mode
 		private int frameCount;
 
+		//Heli mockup: rotatable actual-size outline for judging spacing; pinnable to a world position
+		private bool heliMockup;
+		private float heliMockupAngle;
+		private bool heliPinned;
+		private NVec2 heliPinPos;	//World px, valid while pinned
+
+		//Playtest trace: heli position+rotation per frame dumped by the game (one segment per attempt)
+		private struct TraceSample { public NVec2 P; public float R; }
+		private bool showTrace=true;
+		private readonly List<List<TraceSample>> traceSegments=new();
+		private DateTime traceStamp;
+		private static readonly string tracePath=Path.Combine(Path.GetTempPath(),"hokiedit-playtest.trace");
+
+		//Trace playback (pseudo-ghost)
+		private int traceAttempt=-1;	//-1 = follow latest attempt
+		private float traceFrame;
+		private bool tracePlaying;
+
 		private const int Unit=8;	//map file unit -> pixels
+
+		//Platform shortcut modifier: labeled Cmd on macOS, Ctrl elsewhere; both are accepted
+		private static readonly bool IsMac=OperatingSystem.IsMacOS();
+		private static readonly string ModName=IsMac?"Cmd":"Ctrl";
+		private static bool modDown(ImGuiIOPtr io)=>io.KeyCtrl||io.KeySuper;
 
 		public EditorGame(string[] args) {
 			graphics=new GraphicsDeviceManager(this);
@@ -133,19 +156,27 @@ namespace HokiEdit {
 			var io=ImGui.GetIO();
 			if (io.WantCaptureMouse) return;
 
-			//Pan: middle-drag (or space+left-drag later)
+			//Pan: middle-drag
 			if (ImGui.IsMouseDragging(ImGuiMouseButton.Middle,0)) {
 				var d=io.MouseDelta;
 				pan+=d;
 			}
 
-			//Zoom around cursor
-			if (io.MouseWheel!=0) {
-				float factor=MathF.Pow(1.1f,io.MouseWheel);
-				float newZoom=Math.Clamp(zoom*factor,0.1f,8f);
-				factor=newZoom/zoom;
-				pan=io.MousePos-(io.MousePos-pan)*factor;
-				zoom=newZoom;
+			//The decal tool claims shift/alt+wheel for index/depth
+			if (tool==Tool.Decal&&(io.KeyShift||io.KeyAlt)) return;
+
+			if (io.MouseWheel!=0||io.MouseWheelH!=0) {
+				if (modDown(io)) {
+					//Mod+wheel: zoom around cursor
+					float factor=MathF.Pow(1.1f,io.MouseWheel);
+					float newZoom=Math.Clamp(zoom*factor,0.1f,8f);
+					factor=newZoom/zoom;
+					pan=io.MousePos-(io.MousePos-pan)*factor;
+					zoom=newZoom;
+				} else {
+					//Plain wheel / two-finger scroll: pan
+					pan+=new NVec2(io.MouseWheelH,io.MouseWheel)*30f;
+				}
 			}
 		}
 
@@ -242,26 +273,28 @@ namespace HokiEdit {
 
 			if (ImGui.BeginMainMenuBar()) {
 				if (ImGui.BeginMenu("File")) {
-					if (ImGui.MenuItem("New","Ctrl+N")) { undoStack.Push(doc); doc=new MapDocument(); currentPath=null; dirty=false; }
-					if (ImGui.MenuItem("Open...","Ctrl+O")) { browserOpen=true; browserSave=false; }
-					if (ImGui.MenuItem("Save","Ctrl+S",false,true)) menuSave();
+					if (ImGui.MenuItem("New",ModName+"+N")) menuNew();
+					if (ImGui.MenuItem("Open...",ModName+"+O")) { browserOpen=true; browserSave=false; }
+					if (ImGui.MenuItem("Save",ModName+"+S",false,true)) menuSave();
 					if (ImGui.MenuItem("Save As...")) { browserOpen=true; browserSave=true; }
 					ImGui.Separator();
-					if (ImGui.MenuItem("Playtest","Ctrl+P")) playtest();
+					if (ImGui.MenuItem("Playtest",ModName+"+P")) playtest();
 					ImGui.Separator();
-					if (ImGui.MenuItem("Quit","Ctrl+Q")) Exit();
+					if (ImGui.MenuItem("Quit",ModName+"+Q")) Exit();
 					ImGui.EndMenu();
 				}
 				if (ImGui.BeginMenu("Edit")) {
-					if (ImGui.MenuItem("Undo","Ctrl+Z",false,undoStack.CanUndo)) { doc=undoStack.Undo(doc); selection.Clear(); dirty=true; }
-					if (ImGui.MenuItem("Redo","Ctrl+Shift+Z",false,undoStack.CanRedo)) { doc=undoStack.Redo(doc); selection.Clear(); dirty=true; }
+					if (ImGui.MenuItem("Undo",ModName+"+Z",false,undoStack.CanUndo)) menuUndo();
+					if (ImGui.MenuItem("Redo",ModName+"+Shift+Z",false,undoStack.CanRedo)) menuRedo();
 					ImGui.Separator();
-					if (ImGui.MenuItem("Copy","Ctrl+C",false,selection.Count>0)) copySelection();
-					if (ImGui.MenuItem("Paste","Ctrl+V",false,clipboard!=null)) pasteClipboard(screenToWorld(ImGui.GetIO().DisplaySize/2));
+					if (ImGui.MenuItem("Copy",ModName+"+C",false,selection.Count>0)) copySelection();
+					if (ImGui.MenuItem("Paste",ModName+"+V",false,clipboard!=null)) pasteClipboard(screenToWorld(ImGui.GetIO().DisplaySize/2));
 					if (ImGui.MenuItem("Delete","Del",false,selection.Count>0)) deleteSelection();
 					ImGui.Separator();
 					if (ImGui.MenuItem("Flip Horizontal",null,false,selection.Count>0)) flipSelection(true);
 					if (ImGui.MenuItem("Flip Vertical",null,false,selection.Count>0)) flipSelection(false);
+					if (ImGui.MenuItem("Scale Up 25%",ModName+"+=",false,selection.Count>0)) scaleSelection(1.25f);
+					if (ImGui.MenuItem("Scale Down 20%",ModName+"+-",false,selection.Count>0)) scaleSelection(0.8f);
 					ImGui.Separator();
 					if (ImGui.MenuItem("Map Settings...")) settingsOpen=true;
 					ImGui.EndMenu();
@@ -269,6 +302,10 @@ namespace HokiEdit {
 				if (ImGui.BeginMenu("View")) {
 					if (ImGui.MenuItem("Reset view")) { zoom=1; pan=new NVec2(64,64); }
 					if (ImGui.MenuItem("Fit map")) fitView();
+					ImGui.Separator();
+					if (ImGui.MenuItem("Heli mockup","H",heliMockup)) heliMockup=!heliMockup;
+					if (ImGui.MenuItem("Playtest trace",null,showTrace)) showTrace=!showTrace;
+					if (ImGui.MenuItem("Clear trace",null,false,traceSegments.Count>0)) { traceSegments.Clear(); try { File.Delete(tracePath); } catch {} }
 					ImGui.EndMenu();
 				}
 
@@ -278,14 +315,19 @@ namespace HokiEdit {
 				ImGui.EndMainMenuBar();
 			}
 
-			//Shortcuts
-			if (io.KeyCtrl) {
-				if (ImGui.IsKeyPressed(ImGuiKey.S)) menuSave();
-				if (ImGui.IsKeyPressed(ImGuiKey.O)) { browserOpen=true; browserSave=false; }
-				if (ImGui.IsKeyPressed(ImGuiKey.P)) playtest();
-				if (ImGui.IsKeyPressed(ImGuiKey.Z) && !io.KeyShift && undoStack.CanUndo) { doc=undoStack.Undo(doc); selection.Clear(); dirty=true; }
-				if (ImGui.IsKeyPressed(ImGuiKey.Z) && io.KeyShift && undoStack.CanRedo) { doc=undoStack.Redo(doc); selection.Clear(); dirty=true; }
-				if (ImGui.IsKeyPressed(ImGuiKey.Q)) Exit();
+			//Shortcuts (Cmd on macOS, Ctrl elsewhere)
+			if (modDown(io)) {
+				if (ImGui.IsKeyPressed(ImGuiKey.N,false)) menuNew();
+				if (ImGui.IsKeyPressed(ImGuiKey.S,false)) menuSave();
+				if (ImGui.IsKeyPressed(ImGuiKey.O,false)) { browserOpen=true; browserSave=false; }
+				if (ImGui.IsKeyPressed(ImGuiKey.P,false)) playtest();
+				if (ImGui.IsKeyPressed(ImGuiKey.Z,false) && !io.KeyShift && undoStack.CanUndo) menuUndo();
+				if (ImGui.IsKeyPressed(ImGuiKey.Z,false) && io.KeyShift && undoStack.CanRedo) menuRedo();
+				if (ImGui.IsKeyPressed(ImGuiKey.C,false)) copySelection();
+				if (ImGui.IsKeyPressed(ImGuiKey.V,false)) pasteClipboard(screenToWorld(io.MousePos));
+				if (ImGui.IsKeyPressed(ImGuiKey.Equal,false)) scaleSelection(1.25f);
+				if (ImGui.IsKeyPressed(ImGuiKey.Minus,false)) scaleSelection(0.8f);
+				if (ImGui.IsKeyPressed(ImGuiKey.Q,false)) Exit();
 			}
 
 			//Status bar: cursor position in map units
@@ -293,7 +335,8 @@ namespace HokiEdit {
 			ImGui.SetNextWindowPos(new NVec2(0,io.DisplaySize.Y-24));
 			ImGui.SetNextWindowSize(new NVec2(io.DisplaySize.X,24));
 			ImGui.Begin("##status",ImGuiWindowFlags.NoDecoration|ImGuiWindowFlags.NoInputs|ImGuiWindowFlags.NoBackground);
-			ImGui.Text($"({(int)MathF.Round(world.X/Unit)}, {(int)MathF.Round(world.Y/Unit)})   zoom {zoom:0.0}x   theme: {doc.Theme}");
+			//TODO remove "mods" readout once the macOS Cmd mapping question is settled
+			ImGui.Text($"({(int)MathF.Round(world.X/Unit)}, {(int)MathF.Round(world.Y/Unit)})   zoom {zoom:0.0}x   theme: {doc.Theme}   mods: ctrl={io.KeyCtrl} super={io.KeySuper}");
 			ImGui.End();
 
 			if (browserOpen) drawFileBrowser();
@@ -305,6 +348,10 @@ namespace HokiEdit {
 			if (currentPath!=null) saveMapFile(currentPath);
 			else { browserOpen=true; browserSave=true; }
 		}
+
+		private void menuNew() { undoStack.Push(doc); doc=new MapDocument(); selection.Clear(); currentPath=null; dirty=false; }
+		private void menuUndo() { doc=undoStack.Undo(doc); selection.Clear(); dirty=true; }
+		private void menuRedo() { doc=undoStack.Redo(doc); selection.Clear(); dirty=true; }
 
 		/// <summary>
 		/// Saves the working map to a temp file and launches the game on it.
@@ -319,10 +366,14 @@ namespace HokiEdit {
 					parseErrors=new List<string>{ "playtest: game binary not found — build src/Hoki first (dotnet build src/Hoki)" };
 					return;
 				}
+				try { File.Delete(tracePath); } catch {}
+				traceSegments.Clear();
+				traceStamp=default;
+
 				string exe=Path.Combine(gameDir,OperatingSystem.IsWindows()?"Hoki.exe":"Hoki");
 				System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo{
 					FileName=exe,
-					Arguments="\""+tmp+"\"",
+					Arguments="\""+tmp+"\" --trace \""+tracePath+"\"",
 					WorkingDirectory=gameDir	//So config/scores/levels resolve like a normal run
 				});
 			} catch (Exception e) {
@@ -337,6 +388,31 @@ namespace HokiEdit {
 				if (File.Exists(Path.Combine(dir,OperatingSystem.IsWindows()?"Hoki.exe":"Hoki"))) return dir;
 			}
 			return null;
+		}
+
+		/// <summary>
+		/// Reloads the playtest trace when the game has appended a new attempt.
+		/// Format: "x,y,millirads" per line (world px), "---" between attempts.
+		/// </summary>
+		private void refreshTrace() {
+			try {
+				if (!File.Exists(tracePath)) return;
+				DateTime stamp=File.GetLastWriteTimeUtc(tracePath);
+				if (stamp==traceStamp) return;
+				traceStamp=stamp;
+
+				traceSegments.Clear();
+				var seg=new List<TraceSample>();
+				foreach (string line in File.ReadAllLines(tracePath)) {
+					if (line=="---") { if (seg.Count>1) traceSegments.Add(seg); seg=new List<TraceSample>(); continue; }
+					string[] f=line.Split(',');
+					if (f.Length>=2 && float.TryParse(f[0],out float x) && float.TryParse(f[1],out float y)) {
+						float r=f.Length>=3&&int.TryParse(f[2],out int mr)?mr/1000f:0;
+						seg.Add(new TraceSample{P=new NVec2(x,y),R=r});
+					}
+				}
+				if (seg.Count>1) traceSegments.Add(seg);
+			} catch {}	//Best-effort: the game may be mid-write
 		}
 
 		private void fitView() {

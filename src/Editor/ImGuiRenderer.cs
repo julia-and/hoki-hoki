@@ -37,7 +37,7 @@ namespace HokiEdit {
 		private ImGuiVertex[] vertexScratch=new ImGuiVertex[4096];
 		private short[] indexScratch=new short[8192];
 
-		private int prevScroll;
+		private int prevScroll, prevScrollH;
 		private KeyboardState prevKeys;
 		private MouseState prevMouse;
 
@@ -110,18 +110,21 @@ namespace HokiEdit {
 			if (mouse.LeftButton!=prevMouse.LeftButton) io.AddMouseButtonEvent(0,mouse.LeftButton==ButtonState.Pressed);
 			if (mouse.RightButton!=prevMouse.RightButton) io.AddMouseButtonEvent(1,mouse.RightButton==ButtonState.Pressed);
 			if (mouse.MiddleButton!=prevMouse.MiddleButton) io.AddMouseButtonEvent(2,mouse.MiddleButton==ButtonState.Pressed);
-			if (mouse.ScrollWheelValue!=prevScroll) {
-				io.AddMouseWheelEvent(0,(mouse.ScrollWheelValue-prevScroll)/120f);
+			if (mouse.ScrollWheelValue!=prevScroll||mouse.HorizontalScrollWheelValue!=prevScrollH) {
+				//Horizontal negated to match the canonical SDL2 imgui backend
+				io.AddMouseWheelEvent(-(mouse.HorizontalScrollWheelValue-prevScrollH)/120f,(mouse.ScrollWheelValue-prevScroll)/120f);
 				prevScroll=mouse.ScrollWheelValue;
+				prevScrollH=mouse.HorizontalScrollWheelValue;
 			}
 
 			foreach (var (xna,imgui) in keyMap) {
 				bool now=keys.IsKeyDown(xna), was=prevKeys.IsKeyDown(xna);
 				if (now!=was) io.AddKeyEvent(imgui,now);
 			}
-			io.AddKeyEvent(ImGuiKey.ModCtrl,keys.IsKeyDown(Keys.LeftControl)||keys.IsKeyDown(Keys.RightControl)||keys.IsKeyDown(Keys.LeftWindows)||keys.IsKeyDown(Keys.RightWindows));
+			io.AddKeyEvent(ImGuiKey.ModCtrl,keys.IsKeyDown(Keys.LeftControl)||keys.IsKeyDown(Keys.RightControl));
 			io.AddKeyEvent(ImGuiKey.ModShift,keys.IsKeyDown(Keys.LeftShift)||keys.IsKeyDown(Keys.RightShift));
 			io.AddKeyEvent(ImGuiKey.ModAlt,keys.IsKeyDown(Keys.LeftAlt)||keys.IsKeyDown(Keys.RightAlt));
+			io.AddKeyEvent(ImGuiKey.ModSuper,keys.IsKeyDown(Keys.LeftWindows)||keys.IsKeyDown(Keys.RightWindows));
 
 			prevMouse=mouse;
 			prevKeys=keys;
