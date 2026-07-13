@@ -8,7 +8,6 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using SpriteUtilities;
 using FloatMath;
-using Cryptography;
 using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 
 namespace Hoki {
@@ -89,8 +88,6 @@ namespace Hoki {
 		private Hashtable
 			levels,			//Loaded levels, keyed on map hashes
 			themes;			//Loaded theme files, keyed on their hashes
-		private Cryption
-			cryption;		//Encrypt and decrypt data
 		private float
 			accumulator=0,	//Accumulates frame times
 			keyDelay=0;		//Delay until key presses are accepted again
@@ -400,8 +397,6 @@ namespace Hoki {
 			height=480;
 			centerPoint=new Vector2(width/2,height/2);
 
-			//Construct the cryption (for encrypting and decrypting user data)
-			cryption=new Cryption("hello there","young sir");
 
 			//Data structures to hold levels
 			levels=new Hashtable(97);	//Table of all levels

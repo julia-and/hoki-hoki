@@ -15,7 +15,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../FloatMath/FloatMath.csproj" />
-    <ProjectReference Include="../Cryptography/Cryptography.csproj" />
     <ProjectReference Include="../SpriteUtilities/SpriteUtilities.csproj" />
   </ItemGroup>
 

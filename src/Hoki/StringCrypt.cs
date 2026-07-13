@@ -15,7 +15,7 @@ namespace Hoki {
 		public static string MD5(string source) {
 			byte[] textBytes = Encoding.Default.GetBytes(source);
 			try {
-				MD5CryptoServiceProvider cryptHandler=new System.Security.Cryptography.MD5CryptoServiceProvider();
+				System.Security.Cryptography.MD5 cryptHandler=System.Security.Cryptography.MD5.Create();
 				byte[] hash=cryptHandler.ComputeHash(textBytes);
 				string ret="";
 				foreach (byte a in hash) {
