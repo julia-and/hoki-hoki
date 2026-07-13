@@ -597,15 +597,30 @@ namespace Hoki {
 
 			//Load sound effects (SoundEffect.Play spawns a new voice per call, so one instance per effect suffices)
 			FXVolume=Song.Volume/100f;
+			Explosion.Sound=loadSfx("Hoki.fx.explosion.wav");
+			Heli.HitSound=loadSfx("Hoki.fx.hit.wav");
+			Heli.HealSound=loadSfx("Hoki.fx.heal.wav");
+			Spring.Sound=loadSfx("Hoki.fx.spring.wav");
+		}
+
+		/// <summary>
+		/// Loads one embedded sound effect; a failed load (odd wav header, no audio device) means that
+		/// effect stays silent instead of crashing the game.
+		/// </summary>
+		private SoundEffect loadSfx(string resourcePath) {
 			try {
-				Explosion.Sound=SoundEffect.FromStream(getStream("Hoki.fx.explosion.wav"));
-				Heli.HitSound=SoundEffect.FromStream(getStream("Hoki.fx.hit.wav"));
-				Heli.HealSound=SoundEffect.FromStream(getStream("Hoki.fx.heal.wav"));
-				Spring.Sound=SoundEffect.FromStream(getStream("Hoki.fx.spring.wav"));
-			} catch (Exception) {
-				//ponytail: no audio device (CI, headless) => play without sfx rather than crash
-				FXOn=false;
+				return SoundEffect.FromStream(getStream(resourcePath));
+			} catch (Exception e) {
+				Console.Error.WriteLine("sfx load failed: "+resourcePath+" — "+e.Message);
+				return null;
 			}
+		}
+
+		/// <summary>
+		/// Plays a sound effect if effects are on and it actually loaded. All sfx playback routes through here.
+		/// </summary>
+		public static void PlaySfx(SoundEffect sound) {
+			if (FXOn && sound!=null) sound.Play(FXVolume,0,0);
 		}
 
 		protected override void LoadContent() {

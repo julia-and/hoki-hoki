@@ -59,7 +59,7 @@ using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 			frameTime=frameLength;
 			if (Game.FXOn && soundWait<0) {
 				soundWait=soundDelay;
-				Sound.Play(Game.FXVolume,0,0); // PlayFlags.Default
+				Game.PlaySfx(Sound);
 			}
 		}
 

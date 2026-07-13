@@ -403,7 +403,7 @@ using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 						padTime=padHealthWait;
 						if (health<FullHealth) {
 							health++;
-							HealSound.Play(Game.FXVolume,0,0);
+							Game.PlaySfx(HealSound);
 						}
 					}
 				}
@@ -459,7 +459,7 @@ using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 		private void onHit(object sender, HitEventArgs e) {
 			if (Game.FXOn && soundWait<0) {
 				soundWait=soundDelay;
-				HitSound.Play(Game.FXVolume,0,0);
+				Game.PlaySfx(HitSound);
 			}
 			map.Explode(e.Position,true);
 		}

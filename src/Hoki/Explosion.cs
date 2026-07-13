@@ -34,7 +34,7 @@ using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 				Add((SpriteObject)particles[i]);
 			}
 
-			if (!spark && Game.FXOn) Sound.Play(Game.FXVolume,0,0);
+			if (!spark) Game.PlaySfx(Sound);
 		}
 		
 		private void onParticleDie(object sender, EventArgs e) {
