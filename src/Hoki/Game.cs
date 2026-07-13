@@ -1,27 +1,21 @@
 using System;
-using System.Drawing;
 using System.Collections;
-using System.ComponentModel;
-using System.Windows.Forms;
-using System.Data;
 using System.IO;
-using System.Security.Cryptography;
-using SharpDX;
-using SharpDX.Direct3D9;
-using D3D=SharpDX.Direct3D9;
-using DS=SharpDX.DirectSound;
+using FontStashSharp;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Audio;
+using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using SpriteUtilities;
 using FloatMath;
 using Cryptography;
-using FSound=FmodManaged.FSOUND;
-using FMusic=FmodManaged.FMUSIC;
-using FmodManaged.FSOUND.Function;
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 
 namespace Hoki {
 	/// <summary>
 	/// Driver class for the game.
 	/// </summary>
-	public class Game : System.Windows.Forms.Form {
+	public class Game : Microsoft.Xna.Framework.Game {
 		#region vars
 		#region consts
 		private const int
@@ -31,12 +25,7 @@ namespace Hoki {
 			renderSize=1024,	//Resolution to render scenes at
 			//numLevels=26,		//TEMP/DEBUG: limit the number of levels that can be unlocked
 			boxWidth=140,		//Size of the left info boxes on the level selector
-			boxMargin=8,		//Spacing from the edges of the info boxes
-
-			//Windows message IDs (had to use these to read messages from
-			//overridden wndproc because the damn form kept capturing them)
-			WM_KEYDOWN=0x0100,
-			WM_KEYUP=0x0101;
+			boxMargin=8;		//Spacing from the edges of the info boxes
 		private const float
 			frameLength=0.016666f,
 			blurRecover=2,			//Rate of blur recovery, %/sec
@@ -49,10 +38,8 @@ namespace Hoki {
 		private const string
 			highScoreFile="scores",
 			userFile="user";
-		public const string
-			MusicDir=@"music\";
-		private Format
-			textureFormat;
+		public static readonly string
+			MusicDir="music"+Path.DirectorySeparatorChar;
 		private readonly int[,]
 			times;	//Time needed to get bronze, gold, silver medals
 		//Control names
@@ -74,7 +61,6 @@ namespace Hoki {
 		#endregion
 
 		#region window
-		private System.ComponentModel.Container components = null; //Required designer variable.
 		private int
 			width,			//Size of the rendering area
 			height;
@@ -83,21 +69,12 @@ namespace Hoki {
 		#endregion
 
 		#region dx
+		private GraphicsDeviceManager graphics;
 		private Device device;
-		private Sprite sprite;
-		private Viewport viewport;
-		private EffectPool effectPool;
-		private Matrix
-			world,
-			view,
-			proj;
-		private TextureFilter
-			minFilter,
-			magFilter;
-		public static Capabilities
-			Hardware;
-		private DS.DirectSound
-			soundDevice;
+		private FontSystem fontSystem;
+		private KeyboardState prevKeys;		//Previous keyboard state for edge-detecting AnyKeyDown/Up
+		private MouseState prevMouse;
+		public static float FXVolume=1f;	//Sound effect volume, 0-1
 		#endregion
 		
 		#region persistant vars
@@ -107,7 +84,7 @@ namespace Hoki {
 			update;			//List of Updateables
 		private SpriteObject
 			root;			//SpriteObject to which all others are ultimately children
-		private System.Drawing.Color
+		private Microsoft.Xna.Framework.Color
             background;		//Color the device should be cleared to
 		private Hashtable
 			levels,			//Loaded levels, keyed on map hashes
@@ -134,6 +111,7 @@ namespace Hoki {
 		public static bool FXOn;	//Whether to play sound effects
 
 		public event KeyEventHandler AnyKeyDown,AnyKeyUp;
+		public event KeyPressEventHandler KeyPress;
 		#endregion
 
 		#region flecko
@@ -151,8 +129,15 @@ namespace Hoki {
 
 		#region menu
 		//Textures and surfaces
-		private Texture
+		private Texture2D
 			previewTex;
+
+		/// <summary>
+		/// Rendering area size, kept for code that still thinks in WinForms terms
+		/// </summary>
+		public Point ClientSize {
+			get { return new Point(width,height); }
+		}
 
 		private SizeTexture
 			interfaceTex;	//All interface images
@@ -166,7 +151,7 @@ namespace Hoki {
 			perfectTex,
 			starTex;
 
-		private D3D.Font
+		private SpriteFontBase
 			menuFontSmall,	//Font to use for selects, options
 			menuFontLarge,	//Font to use for player details
 			boneFont;		//BONESAW
@@ -402,16 +387,17 @@ namespace Hoki {
 
 		#region construct/initialize
 		public Game() {
-			InitializeComponent();
-
-			//Prevent flickering
-			SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque,true);
-
-			Cursor.Hide();
+			//Set up the window (fixed 640x480, like the original)
+			graphics=new GraphicsDeviceManager(this);
+			graphics.PreferredBackBufferWidth=640;
+			graphics.PreferredBackBufferHeight=480;
+			Window.Title="Hoki";
+			IsMouseVisible=false;
+			IsFixedTimeStep=false;	//The game keeps its own fixed-step accumulator
 
 			//Store the size of the rendering area
-			width=ClientSize.Width;
-			height=ClientSize.Height;
+			width=640;
+			height=480;
 			centerPoint=new Vector2(width/2,height/2);
 
 			//Construct the cryption (for encrypting and decrypting user data)
@@ -430,7 +416,7 @@ namespace Hoki {
 			
 			gameLevels=new Level[levelList.Length];
 			for (int i=0;i<levelList.Length;i++) {
-				if (i!=levelList.Length-1) levelList[i]=levelList[i].Substring(0,levelList[i].Length-1);
+				levelList[i]=levelList[i].Trim();	//The original chopped a trailing \r; git normalized the line endings
 				StreamReader mapReader=new StreamReader(getStream("Hoki.data.maps."+levelList[i]));	//Read the map file (all embedded)
 				map=mapReader.ReadToEnd();
 				mapReader.Close();
@@ -450,7 +436,8 @@ namespace Hoki {
 			}
 
 			//Load user levels
-			String[] userLevelFiles=Directory.GetFiles(Application.StartupPath+"\\levels","*.map");
+			string levelDir=Path.Combine(AppContext.BaseDirectory,"levels");
+			String[] userLevelFiles=Directory.Exists(levelDir)?Directory.GetFiles(levelDir,"*.map"):new string[0];
 			userLevels=new Level[userLevelFiles.Length];
 			for (int i=0;i<userLevelFiles.Length;i++) {
 				StreamReader mapReader=new StreamReader(userLevelFiles[i]);	//Read the map file
@@ -464,7 +451,7 @@ namespace Hoki {
 					levels.Add(encrypted,l);
 				}
 				l.GameMap=map;	//Set the level's map data
-				int first=userLevelFiles[i].LastIndexOf('\\')+1;
+				int first=userLevelFiles[i].LastIndexOf(Path.DirectorySeparatorChar)+1;
 				l.Name=userLevelFiles[i].Substring(first,userLevelFiles[i].LastIndexOf('.')-first);
 
 				//Add it to the user level list
@@ -480,10 +467,8 @@ namespace Hoki {
 				for (int n=0;n<3;n++) times[i,n]=int.Parse(medals[n]);
 			}
 
-			//Load users
-			StreamReader users=new StreamReader(userFile);
-			String[] lines=users.ReadToEnd().Split('\n');
-			users.Close();
+			//Load users (file may not exist on a fresh install)
+			String[] lines=File.Exists(userFile)?File.ReadAllText(userFile).Split('\n'):new string[0];
 
 			Player currentPlayer=null;
 			players=new ArrayList();
@@ -512,10 +497,9 @@ namespace Hoki {
 			//Refresh all players
 			foreach (Player p in players) p.RefreshStatus(gameLevels,times);
 
-			//Load scores
-			StreamReader highScores=new StreamReader(highScoreFile);
-			lines=highScores.ReadToEnd().Split('\n');	//Reads the high scores, decrypts them, and splits them by line
-			highScores.Close();
+			//Load scores (fall back to shipped defaults, then to nothing)
+			string scorePath=File.Exists(highScoreFile)?highScoreFile:(File.Exists("defaultscores.txt")?"defaultscores.txt":null);
+			lines=scorePath!=null?File.ReadAllText(scorePath).Split('\n'):new string[0];
 			Level currentLevel=null;
 			int scoresTaken=0;
 			foreach (String line in lines) {
@@ -542,7 +526,8 @@ namespace Hoki {
 			}
 
 			//Load ghosts
-			String[] ghostFiles=Directory.GetFiles(Application.StartupPath+"\\ghosts","*.ghost");
+			string ghostDir=Path.Combine(AppContext.BaseDirectory,"ghosts");
+			String[] ghostFiles=Directory.Exists(ghostDir)?Directory.GetFiles(ghostDir,"*.ghost"):new string[0];
 			foreach (String fileName in ghostFiles) {
 				//Read the ghost's level hash
 				StreamReader ghostReader=new StreamReader(fileName);
@@ -552,7 +537,7 @@ namespace Hoki {
 				//Add the ghost to the level
 				Level level=(Level)levels[hash];
 				if (level!=null) {
-					int lastSlash=fileName.LastIndexOf("\\")+1;
+					int lastSlash=fileName.LastIndexOf(Path.DirectorySeparatorChar)+1;
 					level.InsertGhost(fileName.Substring(lastSlash,fileName.LastIndexOf(".")-lastSlash));
 				}
 			}
@@ -564,29 +549,34 @@ namespace Hoki {
 			//Initialize the sound
 			//Sound.InitSound(this);
 
-			//Load controls and other preferences
-			StreamReader controlReader=new StreamReader("config");
-			String controlLine;
-			while ((controlLine=controlReader.ReadLine())!=null) {
-				String[] controlMap=controlLine.Split(':');
-				switch (controlMap[0]) {
-					case aName:			controller.SetKey(Hoki.Controls.A,(Keys)int.Parse(controlMap[1])); break;
-					case bName:			controller.SetKey(Hoki.Controls.B,(Keys)int.Parse(controlMap[1])); break;
-					case leftName:		controller.SetKey(Hoki.Controls.Left,(Keys)int.Parse(controlMap[1])); break;
-					case rightName:		controller.SetKey(Hoki.Controls.Right,(Keys)int.Parse(controlMap[1])); break;
-					case upName:		controller.SetKey(Hoki.Controls.Up,(Keys)int.Parse(controlMap[1])); break;
-					case downName:		controller.SetKey(Hoki.Controls.Down,(Keys)int.Parse(controlMap[1])); break;
-					case startName:		controller.SetKey(Hoki.Controls.Start,(Keys)int.Parse(controlMap[1])); break;
-					case volumeName:	Song.Volume=float.Parse(controlMap[1]); break;
-					case musicName:		musicOn=controlMap[1][0]=='1'?true:false; break;
-					case windowedName:	windowed=controlMap[1][0]=='1'?true:false; break;
-					case firstTimeName:	firstTime=controlMap[1][0]=='1'?true:false; break;
-					case fxName:		FXOn=controlMap[1][0]=='1'?true:false; break;
-					case aaName:		antialias=controlMap[1][0]=='1'?true:false; break;
-					case highColorName:	textureFormat=controlMap[1][0]=='1'?Format.A8R8G8B8:Format.A4R4G4B4; break;
+			//Load controls and other preferences (defaults if no config file exists)
+			Song.Volume=100;
+			musicOn=FXOn=true;
+			windowed=true;
+			if (File.Exists("config")) {
+				StreamReader controlReader=new StreamReader("config");
+				String controlLine;
+				while ((controlLine=controlReader.ReadLine())!=null) {
+					String[] controlMap=controlLine.Split(':');
+					switch (controlMap[0]) {
+						case aName:			controller.SetKey(Hoki.Controls.A,(Keys)int.Parse(controlMap[1])); break;
+						case bName:			controller.SetKey(Hoki.Controls.B,(Keys)int.Parse(controlMap[1])); break;
+						case leftName:		controller.SetKey(Hoki.Controls.Left,(Keys)int.Parse(controlMap[1])); break;
+						case rightName:		controller.SetKey(Hoki.Controls.Right,(Keys)int.Parse(controlMap[1])); break;
+						case downName:		controller.SetKey(Hoki.Controls.Down,(Keys)int.Parse(controlMap[1])); break;
+						case upName:		controller.SetKey(Hoki.Controls.Up,(Keys)int.Parse(controlMap[1])); break;
+						case startName:		controller.SetKey(Hoki.Controls.Start,(Keys)int.Parse(controlMap[1])); break;
+						case volumeName:	Song.Volume=float.Parse(controlMap[1]); break;
+						case musicName:		musicOn=controlMap[1][0]=='1'?true:false; break;
+						case windowedName:	windowed=controlMap[1][0]=='1'?true:false; break;
+						case firstTimeName:	firstTime=controlMap[1][0]=='1'?true:false; break;
+						case fxName:		FXOn=controlMap[1][0]=='1'?true:false; break;
+						case aaName:		antialias=controlMap[1][0]=='1'?true:false; break;
+						//highColorName obsolete: textures always load 32bpp now
+					}
 				}
+				controlReader.Close();
 			}
-			controlReader.Close();
 
 			//Set the layout for the flecko.net intro pixels
 			pxLayout=new int[,] { {
@@ -602,176 +592,34 @@ namespace Hoki {
 
 			//Capture keydown
 			AnyKeyDown+=new KeyEventHandler(onKeyDown);
+			KeyPress+=new KeyPressEventHandler((s,e)=>{});	//Never null, like the AnyKey events
+			Window.TextInput+=(s,e)=>KeyPress(this,new KeyPressEventArgs(e.Character));
 
-			//Set up DirectSound
-			soundDevice=new DS.DirectSound();
-			soundDevice.SetCooperativeLevel(this.Handle,DS.CooperativeLevel.Normal);
-
-			DS.SoundBufferDescription bufferDesc=new DS.SoundBufferDescription();
-			bufferDesc.Flags = DS.BufferFlags.ControlVolume | DS.BufferFlags.Defer;
-            //bufferDesc.ControlVolume = true;
-            //bufferDesc.DeferLocation=true;
-
-			//Load sound effects
-			int volume=Song.Volume==0?-10000:(int)((1-Song.Volume/100)*-3000);
-
-			/// Load data from a stream into a secondary sound buffer
-			void LoadSound(DS.SecondarySoundBuffer buffer, System.IO.Stream soundStream)
-			{
-				DataStream dataPart2;
-				DataStream dataPart1 = buffer.Lock(0, buffer.Capabilities.BufferBytes, DS.LockFlags.EntireBuffer, out dataPart2);
-
-                using (var ms = new MemoryStream())
-				{
-                    soundStream.CopyTo(ms);
-                    byte[] soundData = ms.ToArray();
-
-                    dataPart1.WriteRange(soundData);
-                }
-
-                buffer.Unlock(dataPart1, dataPart2);
-			}
-			
-
-			Explosion.Sounds=new DS.SecondarySoundBuffer[3];
-			for (int i=0;i<Explosion.Sounds.Length;i++) {
-				Explosion.Sounds[i]=new DS.SecondarySoundBuffer(soundDevice,bufferDesc);
-				LoadSound(Explosion.Sounds[i], getStream("Hoki.fx.explosion.wav"));
-				Explosion.Sounds[i].Volume=volume;
-			}
-
-			Heli.HitSounds=new DS.SecondarySoundBuffer[4];
-			for (int i=0;i<Heli.HitSounds.Length;i++) {
-                Heli.HitSounds[i] = new DS.SecondarySoundBuffer(soundDevice, bufferDesc);
-                LoadSound(Heli.HitSounds[i], getStream("Hoki.fx.hit.wav"));
-				Heli.HitSounds[i].Volume=volume;
-			}
-
-			Heli.HealSound=new DS.SecondarySoundBuffer(soundDevice, bufferDesc);
-			LoadSound(Heli.HealSound, getStream("Hoki.fx.heal.wav"));
-			Heli.HealSound.Volume=volume;
-
-			Spring.Sounds=new DS.SecondarySoundBuffer[4];
-			for (int i=0;i<Spring.Sounds.Length;i++) {
-				Spring.Sounds[i]=new DS.SecondarySoundBuffer(soundDevice, bufferDesc);
-				LoadSound(Spring.Sounds[i], getStream("Hoki.fx.spring.wav"));
-				Spring.Sounds[i].Volume=volume;
+			//Load sound effects (SoundEffect.Play spawns a new voice per call, so one instance per effect suffices)
+			FXVolume=Song.Volume/100f;
+			try {
+				Explosion.Sound=SoundEffect.FromStream(getStream("Hoki.fx.explosion.wav"));
+				Heli.HitSound=SoundEffect.FromStream(getStream("Hoki.fx.hit.wav"));
+				Heli.HealSound=SoundEffect.FromStream(getStream("Hoki.fx.heal.wav"));
+				Spring.Sound=SoundEffect.FromStream(getStream("Hoki.fx.spring.wav"));
+			} catch (Exception) {
+				//ponytail: no audio device (CI, headless) => play without sfx rather than crash
+				FXOn=false;
 			}
 		}
 
-		public void InitializeGraphics() {
-			var direct3d = new Direct3D();
+		protected override void LoadContent() {
+			device=GraphicsDevice;
 
-            //Turn off event handling
-            //Device.IsUsingEventHandlers=false;
-			
-			//Set up the presentation parameters
-			PresentParameters pParams=new PresentParameters();
-			pParams.SwapEffect=SwapEffect.Discard;
+			//Shared renderer state: ortho pixel camera + blend/sampler states applied per draw
+			SpriteObject.SetupCamera(device,width,height);
 
-			if (antialias) pParams.MultiSampleType = MultisampleType.SixSamples;
-
-			pParams.Windowed=windowed;
-			if (!windowed) pParams.BackBufferFormat=Format.X8R8G8B8;
-			pParams.BackBufferWidth=640;
-			pParams.BackBufferHeight=480;
-
-			//Get some hardware caps
-			Hardware = direct3d.GetDeviceCaps(0, DeviceType.Hardware);
-			//Hardware=HardwareManager.GetDeviceCaps(0,DeviceType.Hardware);
-			Capabilities localCaps=Hardware;
-			CreateFlags flags=CreateFlags.SoftwareVertexProcessing;	//Default createflags
-
-			//Use Hardware vertex processing if available
-			if (Hardware.DeviceCaps.HasFlag(DeviceCaps.HWTransformAndLight)) flags=CreateFlags.HardwareVertexProcessing;
-
-			//Create the device
-			device=new Device(direct3d, 0,DeviceType.Hardware,this.Handle,flags,pParams);
-
-			//Pick filtering to do
-			if (Hardware.TextureFilterCaps.HasFlag(FilterCaps.MagLinear))
-					magFilter=TextureFilter.Linear;
-			else	magFilter=TextureFilter.Point;
-
-			if (Hardware.TextureFilterCaps.HasFlag(FilterCaps.MinLinear))
-					minFilter=TextureFilter.Linear;
-			else	minFilter=TextureFilter.Point;
-
-			//Use point filtering by default
-			device.SetSamplerState(0, SamplerState.MinFilter, TextureFilter.Point);
-            //device.SamplerState[0].MinFilter=TextureFilter.Point;
-            device.SetSamplerState(0, SamplerState.MagFilter, TextureFilter.Point);
-            //device.SamplerState[0].MagFilter=TextureFilter.Point;
-
-            //Basic renderstates
-			device.SetRenderState(RenderState.Lighting, false);
-            device.SetRenderState(RenderState.CullMode, Cull.None);
-            device.SetRenderState(RenderState.MultisampleAntialias, false);
-            //device.RenderState.Lighting=false;
-            //device.RenderState.CullMode=Cull.None;
-            //device.RenderState.MultiSampleAntiAlias=false;
-
-            //Blending states
-            if (Hardware.TextureOperationCaps.HasFlag(TextureOperationCaps.Modulate)) {
-				device.SetTextureStageState(0, TextureStage.ColorOperation, TextureOperation.Modulate);
-                device.SetTextureStageState(0, TextureStage.AlphaOperation, TextureOperation.Modulate);
-                //device.TextureState[0].ColorOperation=TextureOperation.Modulate;	//Required for vertex color blending
-                //device.TextureState[0].AlphaOperation=TextureOperation.Modulate;	//Required for pixel and vertex alpha blending
-            }
-
-            device.SetTextureStageState(0, TextureStage.ColorArg1, TextureArgument.Texture);
-            device.SetTextureStageState(0, TextureStage.ColorArg2, TextureArgument.Diffuse);
-            device.SetTextureStageState(0, TextureStage.AlphaArg1, TextureArgument.Texture);
-            device.SetTextureStageState(0, TextureStage.AlphaArg2, TextureArgument.Diffuse);
-            //device.TextureState[0].ColorArgument1=TextureArgument.TextureColor;		//Required for vertex color and alpha blending
-            //device.TextureState[0].ColorArgument2=TextureArgument.Diffuse;			//Required for vertex color blending
-            //device.TextureState[0].AlphaArgument1=TextureArgument.TextureColor;		//Required for pixel alpha blending
-            //device.TextureState[0].AlphaArgument2=TextureArgument.Diffuse;			//Required for vertex alpha blending
-
-            if (Hardware.SourceBlendCaps.HasFlag(BlendCaps.SourceAlpha)) { 
-				device.SetRenderState(RenderState.SourceBlend, Blend.SourceAlpha);
-				//device.RenderState.SourceBlend=Blend.SourceAlpha;					//Required for alpha blending
-			}
-			if (Hardware.DestinationBlendCaps.HasFlag(BlendCaps.InverseSourceAlpha)) {
-                device.SetRenderState(RenderState.DestinationBlend, Blend.InverseSourceAlpha);
-                //device.RenderState.DestinationBlend=Blend.InvSourceAlpha;			//Required for alpha blending
-            }
-
-            device.SetRenderState(RenderState.AlphaBlendEnable, true);
-            device.SetRenderState(RenderState.AlphaTestEnable, false);
-            //device.RenderState.AlphaBlendEnable=true;								//Required for alpha blending
-            //device.RenderState.AlphaTestEnable=false;
-
-            //Other Device states
-            device.VertexFormat=PositionColoredTextured.Format;
-
-			//Set up matrices
-			world=Matrix.Identity;
-			view=Matrix.Identity;
-			proj=Matrix.OrthoOffCenterLH(0.0f,width,height,0.0f,0.0f,1.0f);
-
-			//Copy them to the device
-			device.SetTransform(TransformState.World, world);
-			device.SetTransform(TransformState.View, view);
-			device.SetTransform(TransformState.Projection, proj);
-
-			//Make an effect pool
-			effectPool=new EffectPool();
-
-			//Create a sprite using the device
-			sprite=new Sprite(device);
-
-			//Setup for rendering to surface
-			viewport=new Viewport();	//Viewport for the RTS
-			viewport.Width=width;
-			viewport.Height=height;
-			viewport.MaxDepth=1;
-
-			//Initialize fonts
-			FontDescription fd = new FontDescription();
-			menuFontSmall=new D3D.Font(device, new FontDescription() { FaceName = "Century Gothic", Height = 11, Italic = false, CharacterSet = FontCharacterSet.Ansi, MipLevels = 0, OutputPrecision = FontPrecision.TrueType, PitchAndFamily = FontPitchAndFamily.Default, Quality = FontQuality.ClearType, Weight = FontWeight.Normal });
-			menuFontLarge=new D3D.Font(device, new FontDescription() { FaceName = "Century Gothic", Height = 13, Italic = false, CharacterSet = FontCharacterSet.Ansi, MipLevels = 0, OutputPrecision = FontPrecision.TrueType, PitchAndFamily = FontPitchAndFamily.Default, Quality = FontQuality.ClearType, Weight = FontWeight.Normal });
-			boneFont=new D3D.Font(device, new FontDescription() { FaceName = "Century Gothic", Height = 72, Italic = false, CharacterSet = FontCharacterSet.Ansi, MipLevels = 0, OutputPrecision = FontPrecision.TrueType, PitchAndFamily = FontPitchAndFamily.Default, Quality = FontQuality.ClearType, Weight = FontWeight.Normal });
+			//Initialize fonts (Century Gothic replaced by a bundled free geometric sans)
+			fontSystem=new FontSystem();
+			fontSystem.AddFont(getStream("Hoki.fonts.Questrial-Regular.ttf"));
+			menuFontSmall=fontSystem.GetFont(13);
+			menuFontLarge=fontSystem.GetFont(15);
+			boneFont=fontSystem.GetFont(72);
 
 			//Load persistant textures
 			string path="Hoki.textures.menu.";
@@ -782,14 +630,8 @@ namespace Hoki {
 			buttonMiddle=loadTexture(buttonTex,path+"buttonmiddle.dat");
 			buttonRight=loadTexture(buttonTex,path+"buttonright.dat");
 
-			//Initialize the DirectX timer
-			DXUtil.Timer(DirectXTimer.GetElapsedTime);
-
 			//Make the root SpriteObject
 			root=new SpriteObject(device,null);
-
-			//Init sound
-			FmodManaged.FSOUND.Function.Initialization.FSOUND_Init(44100, 16, 0);
 
 			//Initialize the game
 			initializeGame();
@@ -802,11 +644,15 @@ namespace Hoki {
 		#endregion
 
 		#region paint
-		protected override void OnPaint(PaintEventArgs e) {
+		protected override void Update(GameTime xnaTime) {
+			base.Update(xnaTime);
+
+			pollInput();
+
 			if (boneStarted) boneText.Visible=!boneText.Visible;
 
 			//Updates
-			float et=DXUtil.Timer(DirectXTimer.GetElapsedTime);
+			float et=(float)xnaTime.ElapsedGameTime.TotalSeconds;
 			if (et<0.1f) {	//Enforce a 10fps minimum/skip excessively delayed frames
 				//If applicable, make sure the ghost is started
 				if (ghostController!=null && !ghostController.Started)
@@ -860,25 +706,41 @@ namespace Hoki {
 
 					controlTimeLeft-=et;
 					if (controlTimeLeft<0 && controlFader.FadeTarget==0) controlFader.FadeTarget=TransformedObject.MaxAlpha;
-					
+
 					break;
 			}
+		}
 
-			device.Clear(ClearFlags.Target,new SharpDX.Mathematics.Interop.RawColorBGRA(background.B, background.G, background.R, background.A),0,0);
-
-			//Draw the scene to the screen
-			device.BeginScene();
+		protected override void Draw(GameTime xnaTime) {
+			device.Clear(background);
 
 			//Perform the drawing operations
 			root.Draw();
 
-			//TODO: is this needed?
-			// device.SetStreamSource(0,null,0, );
+			base.Draw(xnaTime);
+		}
 
-			device.EndScene();
-			device.Present();
+		/// <summary>
+		/// Polls the keyboard/mouse and raises the WinForms-era events the input plumbing consumes.
+		/// </summary>
+		private void pollInput() {
+			KeyboardState keys=Keyboard.GetState();
+			MouseState mouse=Mouse.GetState();
 
-			this.Invalidate();
+			foreach (Keys k in keys.GetPressedKeys())
+				if (!prevKeys.IsKeyDown(k) && keyDelay<0 && AnyKeyDown!=null)
+					AnyKeyDown(this,new KeyEventArgs(k));
+
+			foreach (Keys k in prevKeys.GetPressedKeys())
+				if (!keys.IsKeyDown(k) && AnyKeyUp!=null)
+					AnyKeyUp(this,new KeyEventArgs(k));
+
+			//End the flecko px effect on left click (was OnMouseDown)
+			if (mouse.LeftButton==ButtonState.Pressed && prevMouse.LeftButton==ButtonState.Released && gameState==GameState.Flecko)
+				fleckoTimeLeft=0;
+
+			prevKeys=keys;
+			prevMouse=mouse;
 		}
 
 		/// <summary>
@@ -963,7 +825,7 @@ namespace Hoki {
 		/// </summary>
 		private void fleckoBegin() {
 			//Set the stage color
-			background=System.Drawing.Color.Black;
+			background=Microsoft.Xna.Framework.Color.Black;
 
 			//Set the timer
 			fleckoTimeLeft=fleckoTime;
@@ -999,7 +861,7 @@ namespace Hoki {
 				for (int n=0;n<rows;n++) fallingList[n]=pxLayout[n,i];
 
 				//Create the px and set its properties
-				px=new FallingFleckoPX(this,device,whitePX,fleckoDist,fallingList,Rand.NextFloat());
+				px=new FallingFleckoPX(device,whitePX,fleckoDist,fallingList,Rand.NextFloat());
 				px.X=i*pxSpace;
 				px.Y=fleckoStart;
 				update.Add(px);
@@ -1010,7 +872,7 @@ namespace Hoki {
 			//Add layers to root
 			root.Add(fleckoLayer);
 
-			device.SetRenderState(RenderState.MultisampleAntialias, antialias);
+			
             // device.RenderState.MultiSampleAntiAlias=antialias;
         }
 
@@ -1020,7 +882,7 @@ namespace Hoki {
         private void fleckoEnd() {
 			FallingFleckoPX.OnFleckoPXCreate-=new FleckoPXHandler(OnFleckoPXCreate);
 
-			foreach (FleckoPX px in pxList) px.Unhook(this);
+			foreach (FleckoPX px in pxList) px.Unhook();
 			pxList=null;
 			
 			fleckoLayer.Clear();
@@ -1049,16 +911,16 @@ namespace Hoki {
 		private void menuBegin() {
 			#region stage settings
 			//Set filters
-			device.SetSamplerState(0, SamplerState.MinFilter, TextureFilter.Point);
-            device.SetSamplerState(0, SamplerState.MagFilter, TextureFilter.Point);
+			Renderer.Filter=TextureFilter.Point;
+            
             //device.SamplerState[0].MinFilter=TextureFilter.Point;
 			//device.SamplerState[0].MagFilter=TextureFilter.Point;
 			
 			//Turn off antialiasing
-			device.SetRenderState(RenderState.MultisampleAntialias, false);
+			
 
 			//Use a colored bg
-			background=System.Drawing.Color.Black;
+			background=Microsoft.Xna.Framework.Color.Black;
 
 			//No ghost by default
 			viewGhost=null;
@@ -1213,12 +1075,12 @@ namespace Hoki {
 			boxLayer.Add(highscoreBox);
 
 			//Make a SpriteText to list the player's best time
-			bestTimeText=new SpriteText(device,sprite,menuFontSmall,boxWidth,100);
+			bestTimeText=new SpriteText(device,menuFontSmall,boxWidth,100);
 			bestTimeText.X=3;
 			playerTopBox.Add(bestTimeText);
 
 			//Make a SpriteText to list high scores
-			highScoreText=new SpriteText(device,sprite,menuFontSmall,boxWidth,100);
+			highScoreText=new SpriteText(device,menuFontSmall,boxWidth,100);
 			highScoreText.X=3;
 			highScoreText.Y=1;
 			highscoreBox.Add(highScoreText);
@@ -1244,21 +1106,21 @@ namespace Hoki {
 			update.Add(startMenu);
 			menuList.Add(startMenu);
 
-			startButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			startButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			startButton.Text="Start";
 			startButton.Press+=new EventHandler(onGameStart);
 			startMenu.AddElement(startButton);
 
-			exitButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			exitButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			exitButton.Text="Exit";
 			exitButton.Press+=new EventHandler(onExit);
 			startMenu.AddElement(exitButton);
 
 			if (firstTime) {
-				SpriteText quickInstructions=new SpriteText(device,sprite,menuFontSmall,350,100);
+				SpriteText quickInstructions=new SpriteText(device,menuFontSmall,350,100);
 				quickInstructions.X=startText.X-(quickInstructions.Width-startText.Width);
 				quickInstructions.Y=startMenu.Y+startMenu.Height+50;
-				quickInstructions.Tint=System.Drawing.Color.White;
+				quickInstructions.Tint=Microsoft.Xna.Framework.Color.White;
 				quickInstructions.Format=FontDrawFlags.Center;
 				quickInstructions.Text="Use the directional keys to navigate the menu\nPress button 1 to select, button 2 to cancel\nIn-game, use buttons 1 and 2 to go faster";
 				menuLayer.Add(quickInstructions);
@@ -1287,7 +1149,7 @@ namespace Hoki {
 			playerButtons=new ArrayList(players.Count);
 			for (int i=0;i<players.Count;i++) {
 				//Make a new button for each player
-				DataButton current=new DataButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,pButtonWidth);
+				DataButton current=new DataButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,pButtonWidth);
 				playerButtons.Add(current);
 				
 				//Associate the button with a player
@@ -1303,7 +1165,7 @@ namespace Hoki {
 			}
 
 			//Player select objects
-			playerDetails=new SpriteText(device,sprite,menuFontLarge,200,200);
+			playerDetails=new SpriteText(device,menuFontLarge,200,200);
 			playerStar=new SpriteObject(device,perfectTex);
 			playerBronze=new SpriteObject(device,trophyTex);
 			playerSilver=new SpriteObject(device,trophyTex);
@@ -1314,7 +1176,7 @@ namespace Hoki {
 			playerSilver.Visible=false;
 			playerGold.Visible=false;
 
-			playerDetails.Tint=System.Drawing.Color.White;
+			playerDetails.Tint=Microsoft.Xna.Framework.Color.White;
 
 			playerSilver.Frame=1;
 			playerGold.Frame=2;
@@ -1326,13 +1188,13 @@ namespace Hoki {
 			playerMenu.Add(playerGold);
 
 			//Button to create a new player
-			newPlayerButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,pButtonWidth);
+			newPlayerButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,pButtonWidth);
 			newPlayerButton.Text="New Player";
 			newPlayerButton.Press+=new EventHandler(onNewPlayer);
 			playerMenu.AddElement(newPlayerButton);
 
 			//Button to go back to the start menu
-			playerCancelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,pButtonWidth);
+			playerCancelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,pButtonWidth);
 			playerCancelButton.Text="Cancel";
 			playerCancelButton.Press+=new EventHandler(onPlayerCancel);
 			playerMenu.AddElement(playerCancelButton,true);
@@ -1357,16 +1219,16 @@ namespace Hoki {
 			newPlayerMenuLayer.Add(newPlayerMenu);
 			menuList.Add(newPlayerMenu);
 
-			newPlayerInput=new TextBox(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,pButtonWidth,100,this,newPlayerMenu);
+			newPlayerInput=new TextBox(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,pButtonWidth,100,this,newPlayerMenu);
 			newPlayerInput.MaxWidth=75;
 			newPlayerMenu.AddElement(newPlayerInput);
 
-			newPlayerOkButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,pButtonWidth);
+			newPlayerOkButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,pButtonWidth);
 			newPlayerOkButton.Text="Ok";
 			newPlayerOkButton.Press+=new EventHandler(onNewPlayerOk);
 			newPlayerMenu.AddElement(newPlayerOkButton);
 
-			newPlayerCancelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,pButtonWidth);
+			newPlayerCancelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,pButtonWidth);
 			newPlayerCancelButton.Text="Cancel";
 			newPlayerCancelButton.Press+=new EventHandler(onNewPlayerCancel);
 			newPlayerMenu.AddElement(newPlayerCancelButton);
@@ -1388,27 +1250,27 @@ namespace Hoki {
 			update.Add(mainMenu);
 			menuList.Add(mainMenu);
 
-			newGameButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			newGameButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			newGameButton.Text="Play Game";
 			newGameButton.Press+=new EventHandler(onNewGame);
 			mainMenu.AddElement(newGameButton);
 
-			loadLevelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			loadLevelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			loadLevelButton.Text="Load Level";
 			loadLevelButton.Press+=new EventHandler(onLoadLevel);
 			mainMenu.AddElement(loadLevelButton);
 
-			optionsButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			optionsButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			optionsButton.Text="Options";
 			optionsButton.Press+=new EventHandler(onOptions);
 			mainMenu.AddElement(optionsButton);
 
-			creditsButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			creditsButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			creditsButton.Text="Credits";
 			creditsButton.Press+=new EventHandler(onCredits);
 			mainMenu.AddElement(creditsButton);
 
-			signoutButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			signoutButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			signoutButton.Text="Sign out";
 			signoutButton.Press+=new EventHandler(onSignOut);
 			mainMenu.AddElement(signoutButton,true);
@@ -1428,32 +1290,32 @@ namespace Hoki {
 			update.Add(optionMenu);
 			menuList.Add(optionMenu);
 
-			deleteButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			deleteButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			deleteButton.Text="Delete Player";
 			deleteButton.Press+=new EventHandler(onDelete);
 			optionMenu.AddElement(deleteButton,false);
 
-			volumeButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			volumeButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			volumeButton.Text="Adjust Volume";
 			volumeButton.Press+=new EventHandler(onVolume);
 			optionMenu.AddElement(volumeButton,false);
 			
-			musicButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			musicButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			musicButton.Text="Music: "+(musicOn?"on":"off");
 			musicButton.Press+=new EventHandler(onMusicToggle);
 			optionMenu.AddElement(musicButton);
 
-			fxButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			fxButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			fxButton.Text="FX: "+(FXOn?"on":"off");
 			fxButton.Press+=new EventHandler(onFXToggle);
 			optionMenu.AddElement(fxButton);
 
-			difficultyButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			difficultyButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			difficultyButton.Press+=new EventHandler(onDifficultyToggle);
 			if (player!=null) difficultyButton.Text="Difficulty: "+(player.Easy?"easy":"normal");
 			optionMenu.AddElement(difficultyButton);
 
-			optionsOkButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			optionsOkButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			optionsOkButton.Text="Ok";
 			optionsOkButton.Press+=new EventHandler(onOptionsOk);
 			optionMenu.AddElement(optionsOkButton,true);
@@ -1490,8 +1352,8 @@ namespace Hoki {
 			creditsText.Y=hokiText.Y;
 			creditsMenuLayer.Add(creditsText);
 
-			SpriteText credits=new SpriteText(device,sprite,menuFontSmall,400,250);
-			credits.Tint=System.Drawing.Color.White;
+			SpriteText credits=new SpriteText(device,menuFontSmall,400,250);
+			credits.Tint=Microsoft.Xna.Framework.Color.White;
 			credits.Text="HOKI HOKI\n\nDeveloped by Max Abernethy\nMusic by 409 (www.four09.org)\nCreated with FMOD and Ogg Vorbis\n\nTextures by:\n  John Hunter, http://www.zipcon.net/~john/\n  Citrus Moon, http://citrusmoon.typepad.com/\n  http://astronomy.swin.edu.au/~pbourke/texture/\n  C.X. (made the little blue tiles)\n\nFlecko.net 2005";
 			credits.X=creditsText.X;
 			credits.Y=mainMenu.Y;
@@ -1505,7 +1367,7 @@ namespace Hoki {
 			update.Add(creditsMenu);
 			menuList.Add(creditsMenu);
 
-			creditsOkButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			creditsOkButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			creditsOkButton.Text="Ok";
 			creditsOkButton.Press+=new EventHandler(onCreditsOk);
 			creditsMenu.AddElement(creditsOkButton,true);
@@ -1516,11 +1378,11 @@ namespace Hoki {
 			deleteText.Y=creditsText.Y;
 			deleteMenuLayer.Add(deleteText);
 
-			SpriteText confirmText=new SpriteText(device,sprite,menuFontSmall,300,20);
+			SpriteText confirmText=new SpriteText(device,menuFontSmall,300,20);
 			confirmText.Text="This will delete all of your progress.";
 			confirmText.X=deleteText.X;
 			confirmText.Y=deleteText.Y+deleteText.Height+10;
-			confirmText.Tint=System.Drawing.Color.White;
+			confirmText.Tint=Microsoft.Xna.Framework.Color.White;
 			deleteMenuLayer.Add(confirmText);
 
 			deleteMenu=new Menu(device,controller);
@@ -1531,12 +1393,12 @@ namespace Hoki {
 			deleteMenuLayer.Add(deleteMenu);
 			menuList.Add(deleteMenu);
 
-			deleteOkButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			deleteOkButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			deleteOkButton.Text="Ok";
 			deleteOkButton.Press+=new EventHandler(onDeleteOk);
 			deleteMenu.AddElement(deleteOkButton);
 
-			deleteCancelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			deleteCancelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			deleteCancelButton.Text="Cancel";
 			deleteCancelButton.Press+=new EventHandler(onDeleteCancel);
 			deleteMenu.AddElement(deleteCancelButton,true);
@@ -1552,22 +1414,22 @@ namespace Hoki {
 			gameMenuLayer.Add(gameMenu);
 			menuList.Add(gameMenu);
 
-			playButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			playButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			playButton.Text="Play level";
 			playButton.Press+=new EventHandler(onPlay);
 			gameMenu.AddElement(playButton);
 
-			ghostButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			ghostButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			ghostButton.Text="Record ghost";
 			ghostButton.Press+=new EventHandler(onGhost);
 			gameMenu.AddElement(ghostButton);
 
-			viewButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			viewButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			viewButton.Text="View ghost";
 			viewButton.Press+=new EventHandler(onView);
 			gameMenu.AddElement(viewButton);
 
-			playCancelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			playCancelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			playCancelButton.Text="Cancel";
 			playCancelButton.Press+=new EventHandler(onPlayCancel);
 			gameMenu.AddElement(playCancelButton,true);
@@ -1585,7 +1447,7 @@ namespace Hoki {
 			l.Thickness=160;
 			l.X=(width-l.Width)/2;
 			l.Y=height/2;
-			l.Tint=System.Drawing.Color.FromArgb(30,30,30);
+			l.Tint=ColorX.FromArgb(30,30,30);
 			errMenuLayer.Add(l);
 
 			SpriteBox b=new SpriteBox(device);
@@ -1593,7 +1455,7 @@ namespace Hoki {
 			b.Y=l.Y-l.Thickness/2;
 			b.Width=l.Width;
 			b.Height=l.Thickness;
-			b.Tint=System.Drawing.Color.CornflowerBlue;
+			b.Tint=Microsoft.Xna.Framework.Color.CornflowerBlue;
 			errMenuLayer.Add(b);
 
 			//Header
@@ -1604,10 +1466,10 @@ namespace Hoki {
 			errMenuLayer.Add(errHeader);
 
 			//Text
-			errText=new SpriteText(device,sprite,menuFontSmall,(int)(l.Width-2*margin),(int)(l.Thickness-4*margin-buttonRight.Height-errHeader.Height));
+			errText=new SpriteText(device,menuFontSmall,(int)(l.Width-2*margin),(int)(l.Thickness-4*margin-buttonRight.Height-errHeader.Height));
 			errText.X=l.X+margin;
 			errText.Y=l.Y-l.Thickness/2+2*margin+errHeader.Height;
-			errText.Tint=System.Drawing.Color.White;
+			errText.Tint=Microsoft.Xna.Framework.Color.White;
 			errText.Format= FontDrawFlags.WordBreak| FontDrawFlags.Center| FontDrawFlags.VerticalCenter;
 			errMenuLayer.Add(errText);
 
@@ -1620,7 +1482,7 @@ namespace Hoki {
 			errUpdate.Add(errMenu);
 
 			//OK button
-			errOkButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			errOkButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			errOkButton.Text="OK";
 			errMenu.AddElement(errOkButton,true);
 			
@@ -1642,14 +1504,14 @@ namespace Hoki {
 
 			levelButtons=new DataButton[userLevels.Length];
 			for (int i=0;i<userLevels.Length;i++) {
-				levelButtons[i]=new DataButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+				levelButtons[i]=new DataButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 				levelButtons[i].Data=userLevels[i];
 				levelButtons[i].Text=userLevels[i].Name;
 				levelButtons[i].Press+=new EventHandler(onLevelButtonPress);
 				levelMenu.AddElement(levelButtons[i]);
 			}
 
-			levelCancelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			levelCancelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			levelCancelButton.Text="Cancel";
 			levelCancelButton.Press+=new EventHandler(onLevelCancel);
 			levelMenu.AddElement(levelCancelButton,true);
@@ -1662,16 +1524,16 @@ namespace Hoki {
 			ghostMenuLayer.Add(ghostMenu);
 			menuList.Add(ghostMenu);
 
-			ghostText=new TextBox(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth,10,this,ghostMenu);
+			ghostText=new TextBox(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth,10,this,ghostMenu);
 			ghostText.Text="<ghost name>";
 			ghostMenu.AddElement(ghostText);
 
-			ghostOkButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			ghostOkButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			ghostOkButton.Text="Save";
 			ghostOkButton.Press+=new EventHandler(onGhostOk);
 			ghostMenu.AddElement(ghostOkButton);
 
-			ghostCancelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			ghostCancelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			ghostCancelButton.Text="Discard";
 			ghostCancelButton.Press+=new EventHandler(onGhostCancel);
 			ghostMenu.AddElement(ghostCancelButton);
@@ -1705,11 +1567,11 @@ namespace Hoki {
 			aIcon.Y=height-aIcon.Height-10;
 			controlFader.Add(aIcon);
 
-			SpriteText aText=new SpriteText(device,sprite,menuFontSmall,textWidth,textHeight);
+			SpriteText aText=new SpriteText(device,menuFontSmall,textWidth,textHeight);
 			aText.Text=keyName(controller.GetKey(Hoki.Controls.A));
 			aText.X=aIcon.X+aIcon.Width+margin;
 			aText.Y=aIcon.Y;
-			aText.Tint=System.Drawing.Color.White;
+			aText.Tint=Microsoft.Xna.Framework.Color.White;
 			controlFader.Add(aText);
 
 			SpriteObject bIcon=new SpriteObject(device,bTex);
@@ -1717,11 +1579,11 @@ namespace Hoki {
 			bIcon.Y=aText.Y;
 			controlFader.Add(bIcon);
 
-			SpriteText bText=new SpriteText(device,sprite,menuFontSmall,textWidth,textHeight);
+			SpriteText bText=new SpriteText(device,menuFontSmall,textWidth,textHeight);
 			bText.Text=keyName(controller.GetKey(Hoki.Controls.B));
 			bText.X=bIcon.X+bIcon.Width+margin;
 			bText.Y=bIcon.Y;
-			bText.Tint=System.Drawing.Color.White;
+			bText.Tint=Microsoft.Xna.Framework.Color.White;
 			controlFader.Add(bText);
 
 			SpriteObject lIcon=new SpriteObject(device,arrowTex);
@@ -1729,11 +1591,11 @@ namespace Hoki {
 			lIcon.Y=bText.Y;
 			controlFader.Add(lIcon);
 
-			SpriteText lText=new SpriteText(device,sprite,menuFontSmall,textWidth,textHeight);
+			SpriteText lText=new SpriteText(device,menuFontSmall,textWidth,textHeight);
 			lText.Text=keyName(controller.GetKey(Hoki.Controls.Left));
 			lText.X=lIcon.X+lIcon.Width+margin;
 			lText.Y=lIcon.Y;
-			lText.Tint=System.Drawing.Color.White;
+			lText.Tint=Microsoft.Xna.Framework.Color.White;
 			controlFader.Add(lText);
 
 			SpriteObject rIcon=new SpriteObject(device,null);
@@ -1746,11 +1608,11 @@ namespace Hoki {
 			innerRIcon.Rotation=FMath.PI;
 			rIcon.Add(innerRIcon);
 
-			SpriteText rText=new SpriteText(device,sprite,menuFontSmall,textWidth,textHeight);
+			SpriteText rText=new SpriteText(device,menuFontSmall,textWidth,textHeight);
 			rText.Text=keyName(controller.GetKey(Hoki.Controls.Right));
 			rText.X=rIcon.X+innerRIcon.Width+margin;
 			rText.Y=rIcon.Y;
-			rText.Tint=System.Drawing.Color.White;
+			rText.Tint=Microsoft.Xna.Framework.Color.White;
 			controlFader.Add(rText);
 
 			SpriteObject uIcon=new SpriteObject(device,null);
@@ -1763,11 +1625,11 @@ namespace Hoki {
 			innerUIcon.Rotation=FMath.PI/2;
 			uIcon.Add(innerUIcon);
 
-			SpriteText uText=new SpriteText(device,sprite,menuFontSmall,textWidth,textHeight);
+			SpriteText uText=new SpriteText(device,menuFontSmall,textWidth,textHeight);
 			uText.Text=keyName(controller.GetKey(Hoki.Controls.Up));
 			uText.X=uIcon.X+innerUIcon.Width+margin;
 			uText.Y=uIcon.Y;
-			uText.Tint=System.Drawing.Color.White;
+			uText.Tint=Microsoft.Xna.Framework.Color.White;
 			controlFader.Add(uText);
 
 			SpriteObject dIcon=new SpriteObject(device,null);
@@ -1780,11 +1642,11 @@ namespace Hoki {
 			innerDIcon.Rotation=-FMath.PI/2;
 			dIcon.Add(innerDIcon);
 
-			SpriteText dText=new SpriteText(device,sprite,menuFontSmall,textWidth,textHeight);
+			SpriteText dText=new SpriteText(device,menuFontSmall,textWidth,textHeight);
 			dText.Text=keyName(controller.GetKey(Hoki.Controls.Down));
 			dText.X=dIcon.X+innerDIcon.Width+margin;
 			dText.Y=dIcon.Y;
-			dText.Tint=System.Drawing.Color.White;
+			dText.Tint=Microsoft.Xna.Framework.Color.White;
 			controlFader.Add(dText);
 
 			SpriteObject pauseIcon=new SpriteObject(device,pauseTex);
@@ -1792,11 +1654,11 @@ namespace Hoki {
 			pauseIcon.Y=dText.Y;
 			controlFader.Add(pauseIcon);
 
-			SpriteText pauseText=new SpriteText(device,sprite,menuFontSmall,textWidth,textHeight);
+			SpriteText pauseText=new SpriteText(device,menuFontSmall,textWidth,textHeight);
 			pauseText.Text=keyName(controller.GetKey(Hoki.Controls.Start));
 			pauseText.X=pauseIcon.X+pauseIcon.Width+margin;
 			pauseText.Y=pauseIcon.Y;
-			pauseText.Tint=System.Drawing.Color.White;
+			pauseText.Tint=Microsoft.Xna.Framework.Color.White;
 			controlFader.Add(pauseText);
 			#endregion
 
@@ -1924,8 +1786,8 @@ namespace Hoki {
 					congrats.Position=new Vector2(2000,-1000);
 					menuLayer.Add(congrats);
 
-					SpriteText endText=new SpriteText(device,sprite,menuFontSmall,400,100);
-					endText.Tint=System.Drawing.Color.White;
+					SpriteText endText=new SpriteText(device,menuFontSmall,400,100);
+					endText.Tint=Microsoft.Xna.Framework.Color.White;
 					endText.Format= FontDrawFlags.Center;
 					endText.X=congrats.X-(endText.Width-congrats.Width)/2;
 					endText.Y=congrats.Y+congrats.Height+10.5f;
@@ -1937,7 +1799,7 @@ namespace Hoki {
 					endMenu.Y=endText.Y+20;
 					menuLayer.Add(endMenu);
 
-					endKey=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+					endKey=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 					endKey.Text="Ok";
 					endKey.Select();
 					endKey.Press+=new EventHandler(onEnd);
@@ -2007,12 +1869,12 @@ namespace Hoki {
 			bonesaw.Visible=false;
 			startMenu.Add(bonesaw);
 
-			boneText=new SpriteText(device,sprite,boneFont,ClientSize.Width,100);
+			boneText=new SpriteText(device,boneFont,width,100);
 			boneText.X=(startMenu.Width-boneText.Width)/2;
 			boneText.Y=60;
 			boneText.Format= FontDrawFlags.Center;
 			boneText.Text="BONESAW";
-			boneText.Tint=System.Drawing.Color.White;
+			boneText.Tint=Microsoft.Xna.Framework.Color.White;
 			boneText.Visible=false;
 			startMenu.Add(boneText);
 
@@ -2230,8 +2092,8 @@ namespace Hoki {
 		#region main
 		public void mainBegin() {
 			//Set filters
-			device.SetSamplerState(0, SamplerState.MinFilter, minFilter);
-            device.SetSamplerState(0, SamplerState.MagFilter, magFilter);
+			Renderer.Filter=TextureFilter.Linear;
+            
             //device.SamplerState[0].MinFilter=minFilter;
             //device.SamplerState[0].MagFilter=magFilter;
 
@@ -2308,7 +2170,7 @@ namespace Hoki {
 
 			//Make the ghost heli and controler, if necessary
 			StreamReader ghostReader=null;
-			if (viewGhost!=null) ghostReader=new StreamReader(Application.StartupPath+@"\ghosts\"+viewGhost+".ghost");
+			if (viewGhost!=null) ghostReader=new StreamReader(Path.Combine(AppContext.BaseDirectory,"ghosts")+Path.DirectorySeparatorChar+viewGhost+".ghost");
 			else if (map.Ghost!=null) ghostReader=new StreamReader(getStream("Hoki.data.ghosts."+map.Ghost));
 			
 			if (ghostReader!=null) {
@@ -2354,17 +2216,17 @@ namespace Hoki {
 			pauseUpdate.Add(pauseMenu);
 			pauseMenuLayer.Add(pauseMenu);
 
-			continueButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			continueButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			continueButton.Text="Continue";
 			continueButton.Press+=new EventHandler(onContinue);
 			pauseMenu.AddElement(continueButton);
 
-			restartButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			restartButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			restartButton.Text="Restart";
 			restartButton.Press+=new EventHandler(onRestart);
 			pauseMenu.AddElement(restartButton);
 
-			quitButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			quitButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			quitButton.Text="Quit to menu";
 			quitButton.Press+=new EventHandler(onQuitToMenu);
 			pauseMenu.AddElement(quitButton);
@@ -2435,12 +2297,7 @@ namespace Hoki {
 
 		private void onVolumeChange(object sender, EventArgs e) {
 			Song.Volume=volumeSlider.Value*100;
-
-			int volume=volumeSlider.Value==0?-10000:(int)((1-volumeSlider.Value)*-3000);
-			for (int i=0;i<Explosion.Sounds.Length;i++) Explosion.Sounds[i].Volume=volume;
-			for (int i=0;i<Heli.HitSounds.Length;i++) Heli.HitSounds[i].Volume=volume;
-			for (int i=0;i<Spring.Sounds.Length;i++) Spring.Sounds[i].Volume=volume;
-			Heli.HealSound.Volume=volume;
+			FXVolume=volumeSlider.Value;	//Effects are played at this volume (0-1)
 		}
 
 		private void onVolume(object sender, EventArgs e) {
@@ -2493,7 +2350,7 @@ namespace Hoki {
 
 			ghostButtons=new DataButton[ghosts.Count];
 			for (int i=0;i<ghostButtons.Length;i++) {
-				ghostButtons[i]=new DataButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+				ghostButtons[i]=new DataButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 				ghostButtons[i].Text=((String)ghosts[i]).Substring(0,Math.Min(8,((String)ghosts[i]).Length));	//Limit to 8 characters in name
 				ghostButtons[i].Data=ghosts[i];
 				ghostButtons[i].Press+=new EventHandler(onGhostView);
@@ -2501,7 +2358,7 @@ namespace Hoki {
 			}
 
 			//Add the cancel button
-			viewCancelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,buttonWidth);
+			viewCancelButton=new KeyButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,buttonWidth);
 			viewCancelButton.Text="Cancel";
 			viewCancelButton.Press+=new EventHandler(onViewCancel);
 			viewMenu.AddElement(viewCancelButton,true);
@@ -2746,7 +2603,7 @@ namespace Hoki {
 				line.Height=lineSize.Y;
 				line.Thickness=2;
 				line.Antialias=true;
-				line.Tint=System.Drawing.Color.White;
+				line.Tint=Microsoft.Xna.Framework.Color.White;
 
 				lineLayer.Add(line);
 			}
@@ -2782,7 +2639,7 @@ namespace Hoki {
 			writePlayers();
 
 			//Create a new button for it
-			DataButton playerButton=new DataButton(device,buttonLeft,buttonMiddle,buttonRight,sprite,menuFontSmall,pButtonWidth);
+			DataButton playerButton=new DataButton(device,buttonLeft,buttonMiddle,buttonRight,menuFontSmall,pButtonWidth);
 			playerButtons.Add(playerButton);
 			playerButton.Text=newPlayer.Name;
 			playerButton.Data=newPlayer;
@@ -2858,7 +2715,7 @@ namespace Hoki {
 		}
 
 		private void onExit(object sender, EventArgs e) {
-			Application.Exit();
+			Exit();
 		}
 
 		private void onOptionsOk(object sender, EventArgs e) {
@@ -2945,9 +2802,9 @@ namespace Hoki {
 			if (ghostText.Text.Length==0 || !ghostText.DefaultCleared) return;
 
 			//Check if a file with that name already does. If it does, and it's for another level, inform that level not to use that ghost file anymore.
-			if (File.Exists(Application.StartupPath+@"\ghosts\"+ghostText.Text+".ghost")) {
+			if (File.Exists(Path.Combine(AppContext.BaseDirectory,"ghosts")+Path.DirectorySeparatorChar+ghostText.Text+".ghost")) {
 				//Get the file's level hash
-				StreamReader ghostReader=new StreamReader(Application.StartupPath+@"\ghosts\"+ghostText.Text+".ghost");
+				StreamReader ghostReader=new StreamReader(Path.Combine(AppContext.BaseDirectory,"ghosts")+Path.DirectorySeparatorChar+ghostText.Text+".ghost");
 				String levelHash=ghostReader.ReadLine().Substring(1);
 
 				//If it's a different level
@@ -2961,7 +2818,8 @@ namespace Hoki {
 			}
 
 			//Save the ghost
-			StreamWriter ghostWriter=new StreamWriter(Application.StartupPath+"\\ghosts\\"+ghostText.Text+".ghost",false);
+			Directory.CreateDirectory(Path.Combine(AppContext.BaseDirectory,"ghosts"));
+			StreamWriter ghostWriter=new StreamWriter(Path.Combine(AppContext.BaseDirectory,"ghosts")+Path.DirectorySeparatorChar+ghostText.Text+".ghost",false);
 			ghostWriter.Write("#"+playLevel.Hash+"\n"+recorder.Compile());	//Write the level's hash, then the instruction set
 			ghostWriter.Close();
 			recorder=null;
@@ -3091,14 +2949,7 @@ namespace Hoki {
 			*/
 
 			//Quit on escape
-			if (e.KeyCode==Keys.Escape) Application.Exit();
-		}
-
-		protected override void OnMouseDown(MouseEventArgs e) {
-			//End the flecko px effect on left click
-			if (e.Button==MouseButtons.Left && gameState==GameState.Flecko) fleckoTimeLeft=0;
-
-			base.OnMouseDown(e);
+			if (e.KeyCode==Keys.Escape) Exit();
 		}
 
 		#endregion
@@ -3127,38 +2978,10 @@ namespace Hoki {
 		/// <param name="imgStream">Path to the image file</param>
 		/// <returns></returns>
 		public SizeTexture loadSizeTexture(String imagePath) {
-            //Get the stream
-            System.IO.Stream imgStream=getStream(imagePath);
-
-			//Get the size
-			Bitmap bmp=new Bitmap(imgStream);
-			int width=bmp.Width;
-			int height=bmp.Height;
-
-			//Remake the stream to use with the TextureLoader
-			imgStream.Close();
-			imgStream=getStream(imagePath);
-
-			//Create the SizeTexture
-			SizeTexture s=new SizeTexture(Texture.FromStream(device,imgStream,width,height,1,0,textureFormat,Pool.Default,Filter.None,Filter.None,0),width,height);
-
-			//Close the stream and return the SizeTexture
-			imgStream.Close();
-			return s;
-		}
-
-		private void getTextureData(string path,out System.IO.Stream imgStream,out int width,out int height) {
-			//Get the stream
-			imgStream=getStream(path);
-
-			//Get the size
-			Bitmap bmp=new Bitmap(imgStream);
-			width=bmp.Width;
-			height=bmp.Height;
-
-			//Remake the stream to use with the TextureLoader
-			imgStream.Close();
-			imgStream=getStream(path);
+			using (System.IO.Stream imgStream=getStream(imagePath)) {
+				Texture2D tex=Texture2D.FromStream(device,imgStream);
+				return new SizeTexture(tex,tex.Width,tex.Height);
+			}
 		}
 
 		/// <summary>
@@ -3170,47 +2993,14 @@ namespace Hoki {
 		}
 		#endregion
 
-		#region windows stuff
-		/// <summary>
-		/// Clean up any resources being used.
-		/// </summary>
-		protected override void Dispose( bool disposing ) {
-			if( disposing ) {
-				if (components != null) {
-					components.Dispose();
-				}
-			}
-			base.Dispose( disposing );
-		}
-
-		#region Windows Form Designer generated code
-		/// <summary>
-		/// Required method for Designer support - do not modify
-		/// the contents of this method with the code editor.
-		/// </summary>
-		private void InitializeComponent() {
-			// 
-			// Game
-			// 
-			this.AutoScaleBaseSize = new System.Drawing.Size(5, 13);
-			this.ClientSize = new System.Drawing.Size(640, 480);
-			this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
-			this.MaximizeBox = false;
-			this.Name = "Game";
-			this.Text = "Hoki";
-
-		}
-		#endregion
-
+		#region entry point
 		/// <summary>
 		/// The main entry point for the application.
 		/// </summary>
 		[STAThread]
 		static void Main() {
 			using (Game game=new Game()) {
-				game.Show();
-				game.InitializeGraphics();
-				Application.Run(game);
+				game.Run();
 			}
 		}
 		#endregion
@@ -3262,15 +3052,6 @@ namespace Hoki {
 		#endregion
 
 		#region control
-		protected override void WndProc(ref Message m) {
-				//Key events - get to them before the form does
-			if (m.Msg==WM_KEYDOWN) {
-				if (keyDelay<0) AnyKeyDown(this,new KeyEventArgs((Keys)m.WParam.ToInt32()));
-			} else if (m.Msg==WM_KEYUP) AnyKeyUp(this,new KeyEventArgs((Keys)m.WParam.ToInt32()));
-
-			base.WndProc (ref m);
-		}
-
 		private void onControlDown(object sender, ControlEventArgs e) {
 			switch (gameState) {
 				case GameState.Main:

@@ -1,16 +1,14 @@
 using System;
-using System.Collections;	//DEBUG
 using System.IO;
-using System.Drawing;
-using SharpDX;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace SpriteUtilities {
 	/// <summary>
-	/// A wrapper for Direct3D textures that allows dimensions and frames to be specified
+	/// A wrapper for textures that allows dimensions and frames to be specified
 	/// </summary>
 	public class SpriteTexture {
-		private Texture tex;
+		private Texture2D tex;
 		private int
 			width,		//Size of one frame
 			height,
@@ -22,12 +20,12 @@ namespace SpriteUtilities {
 			frameBuffer;//Space in texture coordinates between frames
 
 		#region getset
-		
+
 		/// <summary>
-		/// The Direct3D Texture for the corresponding frame
+		/// The texture for the corresponding frame
 		/// </summary>
-		public Texture Tex {
-			get{ return tex; }
+		public Texture2D Tex {
+			get { return tex; }
 		}
 
 		/// <summary>
@@ -56,10 +54,10 @@ namespace SpriteUtilities {
 		/// <summary>
 		/// Creates a sprite texture from embedded resources
 		/// </summary>
-		/// <param name="device">The Direct3D device that will be used to render this texture</param>
-		/// <param name="texture">Stream of an embedded image file</param>
-		/// <param name="data">Stream of an embedded data file. Format must be: x,y,width,height[,frames,framesPerRow[,frameBufferX,frameBufferY]], where the bracketed material is optional. If null, the texture's native dimensions will be used.</param>
-		public SpriteTexture(Device device,Texture texture,string data,int texWidth,int texHeight) {
+		/// <param name="device">The device that will be used to render this texture</param>
+		/// <param name="texture">The loaded texture</param>
+		/// <param name="data">Contents of a data file. Format must be: x,y,width,height[,frames,framesPerRow[,frameBufferX,frameBufferY]], where the bracketed material is optional. If null, the texture's native dimensions will be used.</param>
+		public SpriteTexture(GraphicsDevice device,Texture2D texture,string data,int texWidth,int texHeight) {
 			//Set defaults
 			int frameBufferX=0;	//Temporarily hold frame buffer values
 			int frameBufferY=0;
@@ -78,7 +76,7 @@ namespace SpriteUtilities {
 
 				x=int.Parse(dimensions[0]);			//Origin, width, and height, MUST be defined in the file
 				y=int.Parse(dimensions[1]);			//x and y are locals, will be used in calculating instance vars later
-				width=int.Parse(dimensions[2]);			
+				width=int.Parse(dimensions[2]);
 				height=int.Parse(dimensions[3]);
 				if (dimensions.Length>=6) {				//If a frame count is declared, use it
 					frames=int.Parse(dimensions[4]);
@@ -105,7 +103,7 @@ namespace SpriteUtilities {
 		}
 
 		public Vector4 TexCoords(int frame) {
-			int col=frame%rowSize; 
+			int col=frame%rowSize;
 			int row=(frame-col)/rowSize;
 			return new Vector4(coordOffset.X+(sizeRatio.X+frameBuffer.X)*col,coordOffset.Y+(sizeRatio.Y+frameBuffer.Y)*row,coordOffset.X+frameBuffer.X*col+sizeRatio.X*(col+1),coordOffset.Y+frameBuffer.Y*row+sizeRatio.Y*(row+1));
 		}

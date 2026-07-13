@@ -1,9 +1,10 @@
 using System;
 using System.Collections;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework.Graphics;
 using SpriteUtilities;
 
 namespace Hoki {
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 	/// <summary>
 	/// A set of UI elements
 	/// </summary>

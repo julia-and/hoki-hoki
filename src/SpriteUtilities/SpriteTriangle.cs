@@ -1,31 +1,23 @@
 using System;
-using System.Drawing;
-using SharpDX;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace SpriteUtilities {
 	/// <summary>
 	/// A textured, screen-aligned triangle
 	/// </summary>
 	public class SpriteTriangle : TransformedObject {
-		protected PositionColoredTextured[] verts;	//List of vertices to put in the buffer
-		protected VertexBuffer vb;	//Textured triangle
-		protected Texture tex;		//Texture to apply
-		protected bool reset=false;	//Whether the buffer needs to be reset
+		protected PositionColoredTextured[] verts;	//Triangle vertices
+		protected Texture2D tex;	//Texture to apply
 
-		public SpriteTriangle(Device device, Texture tex) : base(device) {
+		public SpriteTriangle(GraphicsDevice device,Texture2D tex) : base(device) {
 			//Store the texture
 			this.tex=tex;
 
-			//Create the vertices/vertex buffer
+			//Create the vertices
 			verts=new PositionColoredTextured[3];
 			for (int i=0;i<verts.Length;i++)
-				verts[i]=new PositionColoredTextured(0,0,1,System.Drawing.Color.White.ToArgb(),0,0);
-
-            vb = new VertexBuffer(device, PositionColoredTextured.StrideSize * 3, Usage.Dynamic | Usage.WriteOnly, PositionColoredTextured.Format, Pool.Default);
-            //vb =new VertexBuffer(typeof(PositionColoredTextured),3,device,Usage.Dynamic | Usage.WriteOnly,CustomVertex.PositionColoredTextured.Format,Pool.Default);
-	
-			resetBuffer();
+				verts[i]=new PositionColoredTextured(0,0,1,Color.White,0,0);
 		}
 
 
@@ -38,7 +30,6 @@ namespace SpriteUtilities {
 		public void SetPosition(int index,Vector2 position) {
 			verts[index].X=position.X;
 			verts[index].Y=position.Y;
-			reset=true;
 		}
 
 		/// <summary>
@@ -57,7 +48,6 @@ namespace SpriteUtilities {
 		public void SetTexCoords(int index,Vector2 coords) {
 			verts[index].Tu=coords.X;
 			verts[index].Tv=coords.Y;
-			reset=true;
 		}
 
 		/// <summary>
@@ -71,35 +61,19 @@ namespace SpriteUtilities {
 
 		#region buffer
 		protected override void checkUpdates() {
-			base.checkUpdates ();
-			if (colorNeedsUpdate)	setColor(System.Drawing.Color.FromArgb((int)alpha,color));	//Apply the color to the vertices
-			if (reset)				resetBuffer();
+			base.checkUpdates();
+			if (colorNeedsUpdate) setColor(ColorX.FromArgb((int)alpha,color));	//Apply the color to the vertices
 		}
 
-		protected void setColor(System.Drawing.Color color) {
-			verts[0].Color=verts[1].Color=verts[2].Color=color.ToArgb();
-		}
-
-		protected void resetBuffer() {
-			vb.Lock(0, 0, LockFlags.None).WriteRange(verts);
-			vb.Unlock();
+		protected void setColor(Color color) {
+			verts[0].Color=verts[1].Color=verts[2].Color=color;
 		}
 		#endregion
 
 		#region drawing
-		public override void Draw(Matrix parentMatrix, Vector2 parentShift) {
-			base.Draw (parentMatrix, parentShift);
-			reset=false;	//By the end of the call, the buffer must be up-to-date
-		}
-
 		protected override void deviceDraw(Matrix trans) {
-			device.SetTexture(0,tex);
-			device.VertexFormat=PositionColoredTextured.Format;
-			device.SetStreamSource(0,vb,0, PositionColoredTextured.StrideSize);
-			device.SetTransform(TransformState.World, trans);
-			device.DrawPrimitives(PrimitiveType.TriangleList,0,1);
+			Renderer.DrawList(trans,tex,verts);
 		}
-
 		#endregion
 	}
 }

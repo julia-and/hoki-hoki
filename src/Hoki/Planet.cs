@@ -1,24 +1,24 @@
 using System;
-using SharpDX;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using SpriteUtilities;
 
 namespace Hoki {
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 	/// <summary>
 	/// Summary description for Planet.
 	/// </summary>
 	public class Planet : TransformedObject, Updateable {
-		private VertexBuffer vb;
 		private PositionColoredTextured[] verts;
 		private Vector2 shiftRate;
-		private Texture tex;
+		private Texture2D tex;
 		private Game owner;
 		private float radius;
 
 		static int id;
 		private int myId;
 
-		public Planet(Device device,Texture tex,SpriteTexture sphereTex,Game owner,int detail,float radius,float texrep,Vector2 shiftRate) : base(device) {
+		public Planet(Device device,Texture2D tex,SpriteTexture sphereTex,Game owner,int detail,float radius,float texrep,Vector2 shiftRate) : base(device) {
 			this.tex=tex;
 			this.shiftRate=shiftRate;
 			this.owner=owner;
@@ -27,7 +27,7 @@ namespace Hoki {
 			myId=id++;
 
 			verts=new PositionColoredTextured[detail+2];
-			int white=System.Drawing.Color.White.ToArgb();
+			Microsoft.Xna.Framework.Color white=Microsoft.Xna.Framework.Color.White;
 
 			verts[0]=new PositionColoredTextured(0,0,0,white,0.5f,0.5f);
 			for (int i=1;i<=detail+1;i++) {
@@ -35,10 +35,6 @@ namespace Hoki {
 				Vector2 v=new Vector2((float)Math.Cos(angle),(float)Math.Sin(angle));
 				verts[i]=new PositionColoredTextured(radius*v.X,radius*v.Y,0,white,(1f+v.X*texrep)/2f,(1f+v.Y*texrep)/2f);
 			}
-
-            vb = new VertexBuffer(device, PositionColoredTextured.StrideSize * verts.Length, Usage.Dynamic | Usage.WriteOnly, PositionColoredTextured.Format, Pool.Default);
-            //vb =new VertexBuffer(typeof(PositionColoredTextured),verts.Length,device,Usage.Dynamic|Usage.WriteOnly,PositionColoredTextured.Format,Pool.Default);
-			vb.Lock(0, 0, LockFlags.None).WriteRange(verts);
 
 			SpriteObject sphere=new SpriteObject(device,sphereTex);
 			sphere.Width=sphere.Height=2*radius;
@@ -51,7 +47,7 @@ namespace Hoki {
 		public void Update(float elapsedTime) {
 			//HACK: control visibility for speed. This is really bad code, but it's faster than using localToGlobal.
 			Vector2 screenPos=parent.Parent.Position+position;
-			Visible=(screenPos.X+radius>0 && screenPos.X-radius<owner.ClientSize.Width && screenPos.Y+radius>0 && screenPos.Y-radius<owner.ClientSize.Height);
+			Visible=(screenPos.X+radius>0 && screenPos.X-radius<owner.ClientSize.X && screenPos.Y+radius>0 && screenPos.Y-radius<owner.ClientSize.Y);
 
 			//Slide the texture along if visible.
 			if (Visible) {
@@ -59,19 +55,12 @@ namespace Hoki {
 					verts[i].Tu+=shiftRate.X*elapsedTime;
 					verts[i].Tv+=shiftRate.Y*elapsedTime;
 				}
-				vb.Lock(0, 0, LockFlags.None).WriteRange(verts);
 			}
 		}
 		#endregion
 
 		protected override void deviceDraw(Matrix trans) {
-			//Set pipeline state
-			device.SetTransform(TransformState.World, trans);
-			device.SetStreamSource(0,vb,0, PositionColoredTextured.StrideSize);
-			device.SetTexture(0,tex);
-			device.VertexFormat=PositionColoredTextured.Format;
-
-			device.DrawPrimitives(PrimitiveType.TriangleFan,0,verts.Length-2);
+			Renderer.DrawFan(trans,tex,verts);
 		}
 	}
 }

@@ -1,28 +1,25 @@
-using SharpDX;
-using SharpDX.Direct3D9;
 using System;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace SpriteUtilities {
 	/// <summary>
 	/// Polygonal surface over which a SpriteTexture is tiled TODO: Implement tint changes
 	/// </summary>
 	public class SpritePolygon : EffectObject {
-		private IndexBuffer ib;
-		private VertexBuffer vb;
 		private PositionColoredTextured[] verts;
+		private short[] indices;
 
 		private Vector2 size;
 		private SpriteTexture tex;
-		private int numIndices,numVertices;
 		private bool useIB;
-		private VertexFormat format=PositionColoredTextured.Format;
 
-		public SpritePolygon(Device device,SpriteTexture tex) : base(device) {
+		public SpritePolygon(GraphicsDevice device,SpriteTexture tex) : base(device) {
 			//Store tex reference
 			this.tex=tex;
 		}
 
-		public SpritePolygon(Device device,SpriteTexture tex,Vector2[] vertices) : base(device) {
+		public SpritePolygon(GraphicsDevice device,SpriteTexture tex,Vector2[] vertices) : base(device) {
 			//Store tex reference
 			this.tex=tex;
 
@@ -30,21 +27,13 @@ namespace SpriteUtilities {
 			Build(vertices);
 		}
 
-		public SpritePolygon(Device device,SpriteTexture tex,Vector2[] vertices,short[] indices) : base(device) {
+		public SpritePolygon(GraphicsDevice device,SpriteTexture tex,Vector2[] vertices,short[] indices) : base(device) {
 			//Store tex reference
 			this.tex=tex;
 
 			//Prepare the data
 			Build(vertices,indices);
 		}
-
-		/*TEST
-		//This code is still being tested, and may cause some compatibility problems
-		~SpritePolygon() {
-			if (vb!=null) vb.Dispose();
-			if (ib!=null) ib.Dispose();
-		}
-		//END TEST*/
 
 		public float Width {
 			get { return size.X*XScale; }
@@ -56,19 +45,12 @@ namespace SpriteUtilities {
 			set { YScale=value/size.Y; }
 		}
 
-		public override System.Drawing.Color Tint {
+		public override Color Tint {
 			get { return base.Tint; }
 			set {
-				base.Tint = value;
-				for (int i=0;i<verts.Length;i++) verts[i].Color=value.ToArgb();
-				vb.Lock(0, 0, LockFlags.Discard).WriteRange(verts);
-				vb.Unlock();
+				base.Tint=value;
+				for (int i=0;i<verts.Length;i++) verts[i].Color=value;
 			}
-		}
-
-		public VertexFormat Format {
-			get { return format; }
-			set { format=value; }
 		}
 
 		public void Build(Vector2[] vertices) {
@@ -82,7 +64,7 @@ namespace SpriteUtilities {
 				verts[i]=new PositionColoredTextured(vertices[i].X,
 					vertices[i].Y,
 					1.0f,
-					Color.White.ToBgra(),//Color.White.ToArgb(),
+					Color.White,
 					vertices[i].X/tex.Width,
 					vertices[i].Y/tex.Height);
 				min.X=Math.Min(vertices[i].X,min.X);
@@ -93,91 +75,63 @@ namespace SpriteUtilities {
 
 			size=max-min;
 
-			//Make a vertex buffer
-			Build(verts);
-
 			//Don't use an index buffer
 			useIB=false;
 		}
 
 		public void Build(Vector2[] vertices,short[] indices) {
-			//Build the vertex buffer
+			//Build the vertex list
 			Build(vertices);
 
-			//Build the index buffer
-			makeIB(indices);
-
-			//This flag lets drawPrimitives know to use it
+			//Store the index list
+			this.indices=indices;
 			useIB=true;
 		}
 
 		public void Build(PositionColoredTextured[] verts) {
-			numVertices=verts.Length;
-            vb = new VertexBuffer(device, PositionColoredTextured.StrideSize * verts.Length, Usage.Dynamic | Usage.WriteOnly, PositionColoredTextured.Format, Pool.Default);
-            //vb=new VertexBuffer(typeof(PositionColoredTextured),verts.Length,device,Usage.Dynamic | Usage.WriteOnly,CustomVertex.PositionColoredTextured.Format,Pool.Default);
-            vb.Lock(0, 0, LockFlags.Discard).WriteRange(verts);
-			vb.Unlock();
-
+			this.verts=verts;
 			useIB=false;
 		}
 
 		public void Build(PositionColoredTextured[] verts,short[] indices) {
-			Build(verts);
-			makeIB(indices);
+			this.verts=verts;
+			this.indices=indices;
 			useIB=true;
 		}
 
-		private void makeIB(short[] indices) {
-			//Make an index buffer
-			numIndices=indices.Length;
-            ib = new IndexBuffer(device, sizeof(short) * indices.Length, Usage.Dynamic | Usage.WriteOnly, Pool.Default, false);
-            //ib=new IndexBuffer(typeof(short),indices.Length,device,Usage.Dynamic|Usage.WriteOnly,Pool.Default);
-
-			ib.Lock(0, 0, LockFlags.Discard).WriteRange(indices);
-			ib.Unlock();
-		}
-
 		protected override void deviceDraw(Matrix trans) {
-			//Set pipeline state
-			device.SetTransform(TransformState.World, trans);
-			device.SetStreamSource(0,vb,0, PositionColoredTextured.StrideSize);
-			device.SetTexture(0,tex.Tex);
+			base.deviceDraw(trans);
+			if (verts==null) return;
 
 			if (current!=null) { //Method 1: use an effect (if the base class set one)
 				//Pass constant values to the effect
 				foreach (FXConstant fxc in allConstants) sendFXC(fxc,trans);
 
-				//Draw with the effect
-				int passes=current.Begin(FX.None);
-				for (int i=0;i<passes;i++) {
-					current.BeginPass(i);
-					drawPrimitives();
-					current.EndPass();
+				foreach (EffectPass pass in current.CurrentTechnique.Passes) {
+					pass.Apply();
+					drawPrimitives(trans);
 				}
-				current.End();
 			} else
-				//Method 2: use the fixed function pipeline
-				drawPrimitives();
+				//Method 2: the shared BasicEffect stands in for the fixed function pipeline
+				drawPrimitives(trans);
 		}
 
-		private void drawPrimitives() {
-			if (useIB) {
-				device.Indices=ib;
-				device.DrawIndexedPrimitive(PrimitiveType.TriangleList,0,0,numVertices,0,numIndices/3);
-			} else device.DrawPrimitives(PrimitiveType.TriangleList,0,numVertices/3);
+		private void drawPrimitives(Matrix trans) {
+			if (useIB) Renderer.DrawIndexed(trans,tex.Tex,verts,indices);
+			else Renderer.DrawList(trans,tex.Tex,verts);
 		}
 
-		protected override void sendFXC(SpriteUtilities.EffectObject.FXConstant fxc, Matrix trans) {
+		protected override void sendFXC(SpriteUtilities.EffectObject.FXConstant fxc,Matrix trans) {
 			if (current!=null) {
 				switch (fxc.Type) {
 					case ConstType.Color:
-						current.SetValue(fxc.Name,new Vector4(color.R,color.G,color.B,color.A));
+						current.Parameters[fxc.Name].SetValue(new Vector4(color.R,color.G,color.B,color.A));
 						break;
 					case ConstType.Texture:
-						if (tex!=null) current.SetTexture(fxc.Name,tex.Tex); //Can't set with a null tex, but it doesn't matter because the effect routine won't be run
+						if (tex!=null) current.Parameters[fxc.Name].SetValue(tex.Tex); //Can't set with a null tex, but it doesn't matter because the effect routine won't be run
 						break;
 					case ConstType.WorldMatrix:
-						current.SetValue(fxc.Name,trans);
+						current.Parameters[fxc.Name].SetValue(trans);
 						break;
 				}
 			}

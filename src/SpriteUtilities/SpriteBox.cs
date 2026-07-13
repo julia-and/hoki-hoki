@@ -1,12 +1,11 @@
 using System;
-using System.Drawing;
 using FloatMath;
-using SharpDX;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace SpriteUtilities {
 	/// <summary>
-	/// Summary description for Box.
+	/// An unfilled rectangle drawn with four SpriteLines.
 	/// </summary>
 	public class SpriteBox : SpriteObject {
 		private SpriteLine[]
@@ -41,7 +40,7 @@ namespace SpriteUtilities {
 			}
 		}
 
-		public override System.Drawing.Color Tint {
+		public override Color Tint {
 			get { return base.Tint; }
 			set {
 				base.Tint=value;
@@ -50,7 +49,7 @@ namespace SpriteUtilities {
 		}
 		#endregion
 
-		public SpriteBox(Device device) : base(device,null) {
+		public SpriteBox(GraphicsDevice device) : base(device,null) {
 			lines=new SpriteLine[4];
 			for (int i=0;i<lines.Length;i++) {
 				lines[i]=new SpriteLine(device);//Construct lines

@@ -1,8 +1,10 @@
 using System;
-using System.Windows.Forms;
-using SharpDX;
-using SharpDX.Direct3D9;
+using FontStashSharp;
+using Microsoft.Xna.Framework.Input;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using SpriteUtilities;
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 
 namespace Hoki {
 	/// <summary>
@@ -12,14 +14,14 @@ namespace Hoki {
 		private int maxLength,maxWidth;
 		private bool selected,defaultCleared;
 		private Menu parentMenu;
-		private Form form;
+		private Game form;
 
 		public bool DefaultCleared {
 			get { return defaultCleared; }
 			set { defaultCleared=value; }
 		}
 
-		public TextBox(Device device,SpriteTexture leftTex,SpriteTexture middleTex,SpriteTexture rightTex,Sprite sprite, SharpDX.Direct3D9.Font font,float width,int maxLength,Form form,Menu parent) : base(device,leftTex,middleTex,rightTex,sprite,font,width) {
+		public TextBox(Device device,SpriteTexture leftTex,SpriteTexture middleTex,SpriteTexture rightTex,SpriteFontBase font,float width,int maxLength,Game form,Menu parent) : base(device,leftTex,middleTex,rightTex,font,width) {
 			this.form=form;
 			form.KeyPress+=new KeyPressEventHandler(onKeyPress);
 			this.maxLength=maxLength;

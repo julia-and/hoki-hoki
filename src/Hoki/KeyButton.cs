@@ -1,8 +1,10 @@
+using FontStashSharp;
 using System;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework.Graphics;
 using SpriteUtilities;
 
 namespace Hoki {
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 	/// <summary>
 	/// A button that is operated with keys
 	/// </summary>
@@ -31,7 +33,7 @@ namespace Hoki {
 			set { text.Text=value; }
 		}
 
-		public KeyButton(Device device,SpriteTexture leftTex,SpriteTexture middleTex,SpriteTexture rightTex,Sprite sprite,Font font,float width) : base(device,null) {
+		public KeyButton(Device device,SpriteTexture leftTex,SpriteTexture middleTex,SpriteTexture rightTex,SpriteFontBase font,float width) : base(device,null) {
 			buttonWidth=width;
 
 			left=new SpriteObject(device,leftTex);
@@ -46,7 +48,7 @@ namespace Hoki {
 			right.X=middle.X+middle.Width;
 			Add(right);
 
-			text=new SpriteText(device,sprite,font,(int)middle.Width-2,(int)middle.Height);
+			text=new SpriteText(device,font,(int)middle.Width-2,(int)middle.Height);
 			text.X=middle.X+2;
 			text.Format=FontDrawFlags.VerticalCenter;
 			Add(text);

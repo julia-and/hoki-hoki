@@ -1,9 +1,8 @@
 using System;
-using System.Drawing;
 using System.Collections;
 using FloatMath;
-using SharpDX;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace SpriteUtilities {
 
@@ -18,8 +17,8 @@ namespace SpriteUtilities {
 	public abstract class TransformedObject {
 		#region vars
 		protected TransformedObject parent;	//Parent SpriteObject (or null if none exists)
-		protected Device device;			//Store the device for later use
-			protected ArrayList children;	//List of child TransformedObjects
+		protected GraphicsDevice device;	//Store the device for later use
+		protected ArrayList children;	//List of child TransformedObjects
 
 		protected Vector2
 			position,	//Coordinates relative to parent
@@ -29,12 +28,12 @@ namespace SpriteUtilities {
 			rotation,	//Rotation relative to parent
 			localAlpha,	//Local opacity 0-255
 			alpha;		//Absolute opacity 0-255
-		protected bool 
+		protected bool
 			visible,	//If false, calls to Draw() will be skipped
 			bufferNeedsUpdate,	//If true, will reset the buffer data before drawing
 			colorNeedsUpdate;	//If true, will reset the vertices' color before drawing
-		protected System.Drawing.Color
-            localColor,	//Local tint
+		protected Color
+			localColor,	//Local tint
 			color;		//Absolute tint
 
 		#region const
@@ -117,14 +116,14 @@ namespace SpriteUtilities {
 		/// <summary>
 		/// Colors the sprite (a value of Color.White leaves it unchanged)
 		/// </summary>
-		virtual public System.Drawing.Color Tint {
+		virtual public Color Tint {
 			get { return color; }
 			set {
 				localColor=value;
 				colorNeedsUpdate=true;
 			}
 		}
-		
+
 		/// <summary>
 		/// Opacity (0.0f to 255.0f)
 		/// </summary>
@@ -139,7 +138,7 @@ namespace SpriteUtilities {
 		virtual public float AbsoluteAlpha {
 			get { return alpha; }
 		}
-				
+
 		/// <summary>
 		/// Position to draw at.
 		/// </summary>
@@ -150,11 +149,10 @@ namespace SpriteUtilities {
 		#endregion
 
 		#region constructor
-		public TransformedObject(Device device) {
-			//System.Diagnostics.Trace.WriteLine((TOCount++)+" TransformedObject in memory");
+		public TransformedObject(GraphicsDevice device) {
 			//Store the device
 			this.device=device;
-			
+
 			//Construct an ArrayList to hold child sprites
 			children=new ArrayList();
 			parent=null; //By default the TransformedObject has no parent
@@ -164,7 +162,7 @@ namespace SpriteUtilities {
 			origin=new Vector2();
 			scale=new Vector2(1.0f,1.0f);
 			alpha=localAlpha=255;
-			color=localColor= System.Drawing.Color.White;
+			color=localColor=Color.White;
 			rotation=0;
 			visible=true;
 		}
@@ -222,7 +220,7 @@ namespace SpriteUtilities {
 
 		#region transformations
 		public Matrix OriginTransform() {
-			return Matrix.Transformation2D(Vector2.Zero,0,new Vector2(1,1),Vector2.Zero,0,Vector2.Multiply(origin,-1));
+			return MatrixUtil.Transformation2D(Vector2.Zero,0,new Vector2(1,1),Vector2.Zero,0,Vector2.Multiply(origin,-1));
 		}
 
 		public Matrix AbsoluteTransform() {
@@ -231,7 +229,7 @@ namespace SpriteUtilities {
 		}
 
 		protected Matrix LocalTransform() {
-			return Matrix.Transformation2D(origin,0.0f,scale,Vector2.Zero,rotation,coords);
+			return MatrixUtil.Transformation2D(origin,0.0f,scale,Vector2.Zero,rotation,coords);
 		}
 
 		/// <summary>
@@ -241,7 +239,7 @@ namespace SpriteUtilities {
 		public void GlobalToLocal(ref Vector2 globalPoint) {
 			//Make a stack to hold all ancestor objects in order (this, parent, grandparent, etc.)
 			Stack ancestors=new Stack();
-			
+
 			//Fill the stack
 			TransformedObject current=this;
 			while (current!=null) {
@@ -252,9 +250,8 @@ namespace SpriteUtilities {
 			//Work through the stack
 			while (ancestors.Count>0) {
 				current=(TransformedObject)ancestors.Pop();
-                globalPoint = Vector2.TransformCoordinate(globalPoint, Matrix.Invert(current.LocalTransform()));
-                //globalPoint.TransformCoordinate(Matrix.Invert(current.LocalTransform()));
-            }
+				globalPoint=Vector2.Transform(globalPoint,Matrix.Invert(current.LocalTransform()));
+			}
 		}
 
 		/// <summary>
@@ -263,8 +260,7 @@ namespace SpriteUtilities {
 		public void LocalToGlobal(ref Vector2 localPoint) {
 			TransformedObject current=this;
 			while (current!=null) {
-                localPoint = Vector2.TransformCoordinate(localPoint, current.LocalTransform());
-                //localPoint.TransformCoordinate(current.LocalTransform());
+				localPoint=Vector2.Transform(localPoint,current.LocalTransform());
 				current=current.parent;
 			}
 		}
@@ -273,16 +269,15 @@ namespace SpriteUtilities {
 		/// Converts a point in local coordinate space to the parent's coordinate space in place
 		/// </summary>
 		public void LocalToParent(ref Vector2 localPoint) {
-			localPoint = Vector2.TransformCoordinate(localPoint, LocalTransform());
+			localPoint=Vector2.Transform(localPoint,LocalTransform());
 		}
 
 		/// <summary>
 		/// Converts a point in the parent's coordinate space to local coordinate space in place
 		/// </summary>
 		public void ParentToLocal(ref Vector2 parentPoint) {
-            parentPoint = Vector2.TransformCoordinate(parentPoint, Matrix.Invert(LocalTransform()));
-            //parentPoint.TransformCoordinate(Matrix.Invert(LocalTransform()));
-        }
+			parentPoint=Vector2.Transform(parentPoint,Matrix.Invert(LocalTransform()));
+		}
 
 		/// <summary>
 		/// Converts a point in local coordinate space to another object's coordinate space
@@ -293,16 +288,16 @@ namespace SpriteUtilities {
 			LocalToGlobal(ref localPoint);
 			targetSpace.GlobalToLocal(ref localPoint);
 		}
-		
+
 		/// <summary>
 		/// Finds the origin shift for this SpriteObject instance
 		/// </summary>
 		private Vector2 OriginShift() {
 			return new Vector2(origin.X*scale.X,origin.Y*scale.Y);
 		}
-		
+
 		/// <summary>
-		/// Makes sure that 
+		/// Makes sure that
 		/// </summary>
 		virtual protected void checkUpdates() {
 			if (colorNeedsUpdate) {
@@ -327,7 +322,7 @@ namespace SpriteUtilities {
 		/// <summary>
 		/// Draws the SpriteObject using passed transformation values
 		/// </summary>
-		/// <param name="parent">The parent SpriteObject's absolute transformation</param>
+		/// <param name="parentMatrix">The parent SpriteObject's absolute transformation</param>
 		/// <param name="parentShift">The parent SpriteObject's origin shift</param>
 		virtual public void Draw(Matrix parentMatrix,Vector2 parentShift) {
 			if (!visible) return;
@@ -360,7 +355,7 @@ namespace SpriteUtilities {
 		protected abstract void deviceDraw(Matrix trans);
 
 		/// <summary>
-		/// Calls each child's draw method. 
+		/// Calls each child's draw method.
 		/// </summary>
 		/// <param name="child"></param>
 		virtual protected void drawChild(TransformedObject child,Matrix trans) {

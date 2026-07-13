@@ -1,12 +1,13 @@
 using System;
-using System.Drawing;
+using Microsoft.Xna.Framework;
 using System.Collections;
-using System.Windows.Forms;
-using SharpDX;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework.Input;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using SpriteUtilities;
 
 namespace Hoki {
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 
 	/// <summary>
 	/// A single falling pixel in the FLECKO.NET intro effect
@@ -20,12 +21,9 @@ namespace Hoki {
 		private int pxLast,pxSpace;
 		private float delay;
 
-		private Form frm;
-
 		public static event FleckoPXHandler OnFleckoPXCreate;
 
-		public FallingFleckoPX(Form frm,Device device,SpriteTexture tex,float pxDist,int[] pxList,float delay) : base(frm,device,tex,pxDist) {
-			this.frm=frm;
+		public FallingFleckoPX(Device device,SpriteTexture tex,float pxDist,int[] pxList,float delay) : base(device,tex,pxDist) {
 			this.pxList=pxList;
 			this.delay=delay;
 
@@ -56,7 +54,7 @@ namespace Hoki {
 					for (int i=pxLast;i<highestPX;i++) {
 						if (pxList[i]==1) {
 							//Create a new FleckoPX
-							FleckoPX px=new FleckoPX(frm,device,tex,pxDist);
+							FleckoPX px=new FleckoPX(device,tex,pxDist);
 
 							//Position it
 							px.X=X;

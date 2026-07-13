@@ -1,12 +1,13 @@
 using System;
 using System.Collections;
-using SharpDX;
-using SharpDX.Direct3D9;
-using DS=SharpDX.DirectSound;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Audio;
 using SpriteUtilities;
 using FloatMath;
 
 namespace Hoki {
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 	public class Heli : AASpriteObject, Updateable {
 		#region vars
 		private const bool
@@ -62,8 +63,8 @@ namespace Hoki {
 			Die;
 		#endregion
 
-		public static DS.SecondarySoundBuffer[] HitSounds;
-		public static DS.SecondarySoundBuffer HealSound;
+		public static SoundEffect HitSound;
+		public static SoundEffect HealSound;
 		private static int currentSound=0;
 		private float soundWait;
 		private const float soundDelay=0.07f;
@@ -402,7 +403,7 @@ namespace Hoki {
 						padTime=padHealthWait;
 						if (health<FullHealth) {
 							health++;
-							HealSound.Play(0,DS.PlayFlags.None);
+							HealSound.Play(Game.FXVolume,0,0);
 						}
 					}
 				}
@@ -458,7 +459,7 @@ namespace Hoki {
 		private void onHit(object sender, HitEventArgs e) {
 			if (Game.FXOn && soundWait<0) {
 				soundWait=soundDelay;
-				HitSounds[(currentSound++)%HitSounds.Length].Play(0,DS.PlayFlags.None);
+				HitSound.Play(Game.FXVolume,0,0);
 			}
 			map.Explode(e.Position,true);
 		}

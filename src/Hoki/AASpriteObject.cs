@@ -1,9 +1,10 @@
 using System;
-using SharpDX;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using SpriteUtilities;
 
 namespace Hoki {
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 	/// <summary>
 	/// Summary description for AALayer.
 	/// </summary>
@@ -14,12 +15,9 @@ namespace Hoki {
 		public AASpriteObject(Device device,SpriteTexture tex) : base(device,tex) {}
 
 		public override void Draw(Matrix parentMatrix, Vector2 parentShift) {
-			bool oldAntiAlias=device.GetRenderState<bool>(RenderState.MultisampleAntialias);
-			bool change=(antiAlias!=oldAntiAlias);
-			if (change) device.SetRenderState(RenderState.MultisampleAntialias,antiAlias);
+			//ponytail: per-draw MSAA toggling is a D3D9 concept; multisampling is backbuffer-wide now
 			base.Draw (parentMatrix, parentShift);
-			if (change) device.SetRenderState(RenderState.MultisampleAntialias, oldAntiAlias);//device.RenderState.MultiSampleAntiAlias=device.RenderState.MultiSampleAntiAlias;
-        }
+		}
 
 		public bool AntiAlias {
 			get { return antiAlias; }

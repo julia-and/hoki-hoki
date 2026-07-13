@@ -1,6 +1,6 @@
 using System;
-using SharpDX;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using FloatMath;
 
 namespace Hoki {

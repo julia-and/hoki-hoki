@@ -1,22 +1,18 @@
-using SharpDX;
-//using SharpDX.Direct2D1;
 using System;
-using System.Collections;
-//using SharpDX.DirectWrite;
-using SharpDX.Direct3D9;
+using FontStashSharp;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace SpriteUtilities {
 
-    /// <summary>
-    /// SpriteObject derivative that draws text
-    /// </summary>
-    public class SpriteText : SpriteObject{
-		protected Sprite sprite;			//Sprite to draw with
-		protected Font font;			//Font to draw with
+	/// <summary>
+	/// SpriteObject derivative that draws text
+	/// </summary>
+	public class SpriteText : SpriteObject {
+		protected SpriteFontBase font;		//Font to draw with
 		protected Rectangle rect;			//Clipping dimensions for the text
 		protected string text;				//text to draw
-		protected FontDrawFlags format;	//Format for drawing
-		protected int width,height;			//Space the text will take up
+		protected FontDrawFlags format;		//Format for drawing
 
 		#region getset
 		/// <summary>
@@ -30,18 +26,9 @@ namespace SpriteUtilities {
 		/// <summary>
 		/// Font used for drawing
 		/// </summary>
-		public Font DrawFont {
+		public SpriteFontBase DrawFont {
 			get { return font; }
 			set { font=value; }
-		}
-
-		/// <summary>
-		/// Sprite used for drawing
-		/// </summary>
-		public Sprite DrawSprite {
-			get { return sprite; }
-			set { sprite=value; }
-
 		}
 
 		/// <summary>
@@ -59,7 +46,7 @@ namespace SpriteUtilities {
 			get { return (float)rect.Width; }
 			set { rect.Width=(int)value; }
 		}
-		
+
 		/// <summary>
 		/// Clipping height
 		/// </summary>
@@ -72,9 +59,8 @@ namespace SpriteUtilities {
 
 		/// <param name="width">Clipping width</param>
 		/// <param name="height">Clipping height</param>
-		public SpriteText(Device device,Sprite sprite,Font font,int width,int height) : base(device,null) {
-			//Store sprite and font
-			this.sprite=sprite;
+		public SpriteText(GraphicsDevice device,SpriteFontBase font,int width,int height) : base(device,null) {
+			//Store the font
 			this.font=font;
 
 			//Create a clipping rectangle
@@ -83,24 +69,51 @@ namespace SpriteUtilities {
 			//Set defaults
 			text="";
 			format=0;
-			Tint=System.Drawing.Color.Black;
+			Tint=Color.Black;
 		}
 
 		public Rectangle Area() {
-			return font.MeasureText(sprite,text,0);
+			Vector2 size=font.MeasureString(text??"");
+			return new Rectangle(0,0,(int)Math.Ceiling(size.X),(int)Math.Ceiling(size.Y));
 		}
 
 		/// <summary>
-		/// Transform the device and sprite and draw the text to the screen
+		/// Word-wraps text to fit the clipping width
+		/// </summary>
+		private string wrap(string s) {
+			string[] words=s.Split(' ');
+			string result="",line="";
+			foreach (string word in words) {
+				string test=line.Length==0?word:line+" "+word;
+				if (font.MeasureString(test).X>rect.Width && line.Length>0) {
+					result+=line+"\n";
+					line=word;
+				} else line=test;
+			}
+			return result+line;
+		}
+
+		/// <summary>
+		/// Transform the batch and draw the text to the screen
 		/// </summary>
 		/// <param name="trans">Absolute transformation matrix</param>
 		protected override void deviceDraw(Matrix trans) {
-			sprite.Begin(SpriteFlags.AlphaBlend);
-			device.SetTransform(TransformState.World, Matrix.Identity);
-			sprite.Transform=trans;
-            font.DrawText(sprite, text, rect, format, new SharpDX.Mathematics.Interop.RawColorBGRA(color.B, color.G, color.R, Convert.ToByte(alpha)));
-            //font.DrawText(sprite,text,rect,format,Color.FromArgb((int)alpha,color).ToArgb());
-            sprite.End();
+			if (string.IsNullOrEmpty(text)) return;
+
+			string drawn=(format&FontDrawFlags.WordBreak)!=0?wrap(text):text;
+
+			//Alignment within the clipping rect
+			Vector2 pos=Vector2.Zero;
+			if ((format&(FontDrawFlags.Center|FontDrawFlags.Right|FontDrawFlags.VerticalCenter))!=0) {
+				Vector2 size=font.MeasureString(drawn);
+				if ((format&FontDrawFlags.Center)!=0)			pos.X=(rect.Width-size.X)/2;
+				else if ((format&FontDrawFlags.Right)!=0)		pos.X=rect.Width-size.X;
+				if ((format&FontDrawFlags.VerticalCenter)!=0)	pos.Y=(rect.Height-size.Y)/2;
+			}
+
+			Renderer.Batch.Begin(SpriteSortMode.Deferred,BlendState.NonPremultiplied,null,null,null,null,trans);
+			font.DrawText(Renderer.Batch,drawn,pos,ColorX.FromArgb((int)alpha,color));
+			Renderer.Batch.End();
 		}
 	}
 }

@@ -3,11 +3,12 @@ using System.IO;
 using System.Collections;
 using SpriteUtilities;
 using FloatMath;
-using SharpDX;
-using SharpDX.Direct3D9;
-using System.Windows.Forms;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 
 namespace Hoki {
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 	/// <summary>
 	/// A game map. It is derived from SpriteObject and can draw itself, and it also handles
 	/// physics and collision detection. Also provides static methods for loading maps
@@ -17,7 +18,7 @@ namespace Hoki {
 			defaultTheme="dark.txt";	//Theme to use by default
 
 		//Colors for preview renderer
-		private static readonly System.Drawing.Color
+		private static readonly Microsoft.Xna.Framework.Color
 			lineColor,
 			fgColor,
 			startColor,
@@ -116,11 +117,11 @@ namespace Hoki {
 
 		#region construct/destruct
 		static Map() {
-            lineColor=System.Drawing.Color.FromArgb(62,126,208);
-			fgColor=System.Drawing.Color.FromArgb(36,67,102);
-			startColor=System.Drawing.Color.FromArgb(108,185,244);
-			healColor=System.Drawing.Color.FromArgb(245,27,42);
-			endColor=System.Drawing.Color.FromArgb(255,156,0);
+            lineColor=ColorX.FromArgb(62,126,208);
+			fgColor=ColorX.FromArgb(36,67,102);
+			startColor=ColorX.FromArgb(108,185,244);
+			healColor=ColorX.FromArgb(245,27,42);
+			endColor=ColorX.FromArgb(255,156,0);
 
 			wallIndexPattern=new short[] {0,1,2,1,2,3};
 		}
@@ -534,7 +535,7 @@ namespace Hoki {
 					if (n==2) u=1;
 					if (n%2==1) v=1; else v=0;
 
-					wallVerts[i*4+n]=new PositionColoredTextured(e.Points[n].X,e.Points[n].Y,1.0f,System.Drawing.Color.White.ToArgb(),u,v);
+					wallVerts[i*4+n]=new PositionColoredTextured(e.Points[n].X,e.Points[n].Y,1.0f,Microsoft.Xna.Framework.Color.White,u,v);
 				}
 
 				//Add the indices
@@ -557,8 +558,8 @@ namespace Hoki {
 			}
 
 			//Add the background graphic
-			outMap.background=new TiledSpriteObject(device,outMap.backgroundTex,maxPos.X+game.ClientSize.Width,maxPos.Y+game.ClientSize.Height);
-			outMap.bgCenter=new Vector2(-game.ClientSize.Width/2,-game.ClientSize.Height/2);
+			outMap.background=new TiledSpriteObject(device,outMap.backgroundTex,maxPos.X+game.ClientSize.X,maxPos.Y+game.ClientSize.Y);
+			outMap.bgCenter=new Vector2(-game.ClientSize.X/2,-game.ClientSize.Y/2);
 			outMap.bgLayer.Add(outMap.background);
 
 			//Add the foreground graphic
@@ -606,7 +607,7 @@ namespace Hoki {
 		/// <param name="blankTex">Plain white SpriteTexture</param>
 		/// <param name="device">Direct3D device</param>
 		/// <param name="game">Game window</param>
-		public static Texture RenderPreview(string map,SpriteTexture blankTex,Device device,Game game) {
+		public static Texture2D RenderPreview(string map,SpriteTexture blankTex,Device device,Game game) {
 			Node[] nodes=null;				//Nodes for line and poly creation later
 			Vector2[] vertices=null;		//Equivalent to nodes, but in Vector2 form for use by a SpritePolygon
 			short[]
@@ -718,7 +719,7 @@ namespace Hoki {
 							PadType type=(PadType)int.Parse(data[2]);
 							
 							//Determine the pad's color
-							System.Drawing.Color color=System.Drawing.Color.White;
+							Microsoft.Xna.Framework.Color color=Microsoft.Xna.Framework.Color.White;
 							switch (type) {
 								case PadType.Start:
 									color=startColor;
@@ -763,8 +764,8 @@ namespace Hoki {
 			float ratio=PreviewSize/maxDimension;
 			lineLayer.XScale=lineLayer.YScale=ratio;
 			padLayer.XScale=padLayer.YScale=ratio;
-			foreground.XScale=ratio*game.ClientSize.Width/PreviewSize;	//I don't understand why it has to be scaled
-			foreground.YScale=ratio*game.ClientSize.Height/PreviewSize;	//to the game's window size, it just does
+			foreground.XScale=ratio*game.ClientSize.X/PreviewSize;	//I don't understand why it has to be scaled
+			foreground.YScale=ratio*game.ClientSize.Y/PreviewSize;	//to the game's window size, it just does
 			foreach (SpriteLine pad in pads) pad.Thickness*=ratio;		//This makes equally little sense to me
 
 			//Add everything to the render layer and position it
@@ -775,53 +776,29 @@ namespace Hoki {
 			lineLayer.Y=marginSpace.Y*ratio/2;
 			padLayer.X=lineLayer.X;
 			padLayer.Y=lineLayer.Y;
-			foreground.X=lineLayer.X*game.ClientSize.Width/PreviewSize;
-			foreground.Y=lineLayer.Y*game.ClientSize.Height/PreviewSize;
+			foreground.X=lineLayer.X*game.ClientSize.X/PreviewSize;
+			foreground.Y=lineLayer.Y*game.ClientSize.Y/PreviewSize;
 
-			//Prepare a texture, rts, and viewport for rendering
-			RenderToSurface rts=new RenderToSurface(device,PreviewSize,PreviewSize,Format.A8R8G8B8,false,Format.D16);
-			Texture renderTex=new Texture(device,PreviewSize,PreviewSize,1,Usage.RenderTarget,Format.A8R8G8B8,Pool.Default);
-			Viewport viewport=new Viewport();	//Viewport for the RTS
-			viewport.Width=PreviewSize;
-			viewport.Height=PreviewSize;
-			viewport.MaxDepth=1;
+			//Prepare a render target for rendering (replaces D3DX RenderToSurface)
+			RenderTarget2D renderTex=new RenderTarget2D(device,PreviewSize,PreviewSize,false,SurfaceFormat.Color,DepthFormat.None,0,RenderTargetUsage.PreserveContents);
 
-			//Render the scene to tex
-			rts.BeginScene(renderTex.GetSurfaceLevel(0),viewport);
-			device.Clear(ClearFlags.Target,new SharpDX.Mathematics.Interop.RawColorBGRA(20, 20, 20, 1),0.0f,0);
+			//Render the scene to tex. The game's 640x480 projection compresses into the square
+			//target exactly like the old PreviewSize viewport did (hence the odd scale factors above).
+			device.SetRenderTarget(renderTex);
+			device.Clear(new Microsoft.Xna.Framework.Color(20,20,20));
 
 			//Perform the drawing operations
 			renderLayer.Draw();
 
-			//HACK, SORT OF: draw the walls
-			//Convert the node vectors to d3d vertices and shove them in a vertex buffer for drawing walls
-
+			//HACK, SORT OF: draw the walls in the line layer's coordinate space
 			PositionColored[] wallVerts=new PositionColored[vertices.Length];
 			for (int i=0;i<vertices.Length;i++)
-				wallVerts[i]=new PositionColored(vertices[i].X,vertices[i].Y,1,lineColor.ToArgb());
+				wallVerts[i]=new PositionColored(vertices[i].X,vertices[i].Y,1,lineColor);
 
-            VertexBuffer wallVB = new VertexBuffer(device,PositionColored.StrideSize * wallVerts.Length, Usage.WriteOnly, PositionColored.Format, Pool.Default);
-            //VertexBuffer wallVB=new VertexBuffer(typeof(PositionColored),wallVerts.Length,device,Usage.WriteOnly,CustomVertex.PositionColored.Format,Pool.Default);
-            wallVB.Lock(0, 0, LockFlags.None).WriteRange(wallVerts);
-			wallVB.Unlock();
+			Renderer.DrawLineList(lineLayer.AbsoluteTransform(),wallVerts,wallIndices);
 
-			IndexBuffer wallIB=new IndexBuffer(device, sizeof(short),Usage.WriteOnly,Pool.Default, false);
-			wallIB.Lock(0, 0, LockFlags.None).WriteRange(wallIndices);
-			wallIB.Unlock();
-
-			device.VertexFormat=PositionColored.Format;
-			device.SetStreamSource(0,wallVB,0, PositionColored.StrideSize);
-			device.Indices=wallIB;
-			device.DrawIndexedPrimitive(PrimitiveType.LineList,0,0,wallVerts.Length,0,wallIndices.Length/2);
-			device.VertexFormat=PositionColoredTextured.Format;
-
-			//End the rts scene
-			rts.EndScene(Filter.Linear);
-
-			//Dispose of everything
-//			renderLayer.Dispose();
-//			wallVB.Dispose();
-//			wallIB.Dispose();
+			//Back to the screen
+			device.SetRenderTarget(null);
 
 			//Return the tex
 			return renderTex;

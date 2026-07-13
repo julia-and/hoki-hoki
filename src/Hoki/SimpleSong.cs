@@ -1,38 +1,37 @@
 using System;
 using System.IO;
-using FSound=FmodManaged.FSOUND;
+using Microsoft.Xna.Framework.Media;
+using XnaSong=Microsoft.Xna.Framework.Media.Song;
 
 namespace Hoki {
 	/// <summary>
-	/// Song implementation that uses a single looping sample
+	/// Song implementation that plays a single looping stream through MediaPlayer.
+	/// Missing files are tolerated: the original music is not preserved in this
+	/// repository, so a SimpleSong without its file is simply silent.
 	/// </summary>
 	public class SimpleSong : Song {
-		private IntPtr sample;
-		private int channel;
+		private XnaSong sample;
 
 		public SimpleSong(string filename) {
-			if (!File.Exists(filename)) throw new FileNotFoundException(filename);
-			sample=FSound.Function.Stream.FSOUND_Stream_Open(filename,FSound.Enums.FSOUND_MODES.FSOUND_LOOP_NORMAL,0,0);
-			if (sample.Equals(new IntPtr(0))) throw new Exception("Could not load sample");
+			if (File.Exists(filename))
+				sample=XnaSong.FromUri(Path.GetFileNameWithoutExtension(filename),new Uri(Path.GetFullPath(filename)));
+			//ponytail: missing ogg => silent song, no crash; drop the file in music/ to restore audio
 		}
 
 		#region Song Members
 
 		public override void Play() {
-			channel=FSound.Function.Stream.FSOUND_Stream_Play((int)FSound.Enums.FSOUND_MISC_VALUES.FSOUND_FREE,sample);
-			onVolumeChange(null,new EventArgs());
-
-			VolumeChange+=new EventHandler(onVolumeChange);
+			if (sample==null) return;
+			MediaPlayer.IsRepeating=true;
+			MediaPlayer.Volume=Volume/100f;
+			MediaPlayer.Play(sample);
 		}
 
 		public override void Stop() {
-			FSound.Function.Stream.FSOUND_Stream_Stop(sample);
+			if (sample==null) return;
+			MediaPlayer.Stop();
 		}
 
 		#endregion
-
-		private void onVolumeChange(object sender, EventArgs e) {
-			FSound.Function.Channels.FSOUND_SetVolume(channel,(int)(volume*2.55f));
-		}
 	}
 }

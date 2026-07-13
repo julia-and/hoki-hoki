@@ -1,24 +1,24 @@
 using System;
-using SharpDX;
-using SharpDX.Direct3D9;
-using D3D=SharpDX.Direct3D9;
 using FloatMath;
-using SharpDX.Mathematics.Interop;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace SpriteUtilities {
 	/// <summary>
-	/// A line segment transformed and drawn as a SpriteObject
+	/// A line segment transformed and drawn as a SpriteObject.
+	/// D3DX Line is gone; the line is drawn as a screen-space quad with the requested thickness.
 	/// </summary>
 	public class SpriteLine : TransformedObject {
-		//D3D vars
-		private D3D.Line line;	//D3DX line for drawing
-
 		//Properties
 		protected Vector2
 			vector;		//Vector that represents the line
 		protected float
 			angle,		//Angle from 0rad
-			magnitude;	//Length
+			magnitude,	//Length
+			thickness=1;//Line width in pixels
+		protected bool antialias;
+
+		private PositionColoredTextured[] quad=new PositionColoredTextured[4];
 
 		#region getset
 
@@ -82,25 +82,24 @@ namespace SpriteUtilities {
 		/// Line's thickness (in pixels)
 		/// </summary>
 		virtual public float Thickness {
-			get { return line.Width; }
-			set { line.Width=value; }
+			get { return thickness; }
+			set { thickness=value; }
 		}
 
 		/// <summary>
-		/// Whether the line is antialiased
+		/// Whether the line is antialiased (no-op; multisampling handles this now)
 		/// </summary>
 		virtual public bool Antialias {
-			get { return line.Antialias; }
-			set { line.Antialias=value; }
+			get { return antialias; }
+			set { antialias=value; }
 		}
 
 		#endregion
 
-		public SpriteLine(Device device) : base(device) {
-			line=new D3D.Line(device);
+		public SpriteLine(GraphicsDevice device) : base(device) {
 			vector=new Vector2();
 
-			Tint=System.Drawing.Color.Black;	//Black by default
+			Tint=Color.Black;	//Black by default
 		}
 
 		/// <summary>
@@ -124,13 +123,22 @@ namespace SpriteUtilities {
 		/// </summary>
 		/// <param name="trans">Absolute transformation matrix</param>
 		protected override void deviceDraw(Matrix trans) {
-			//Create new Vector2s and transform them
-			Vector2 P1=Vector2.Zero,P2=new Vector2(vector.X,vector.Y);
-			P1 = Vector2.TransformCoordinate(P1, trans);
-			P2 = Vector2.TransformCoordinate(P2, trans);
+			//Transform endpoints to screen space (matches the old D3DX Line behavior: thickness is in screen pixels)
+			Vector2 p1=Vector2.Transform(Vector2.Zero,trans);
+			Vector2 p2=Vector2.Transform(new Vector2(vector.X,vector.Y),trans);
 
-			//Draw the line
-			line.Draw(new RawVector2[]{P1,P2},new RawColorBGRA(Tint.B, Tint.G, Tint.R, Tint.A));
+			Vector2 dir=p2-p1;
+			if (dir.LengthSquared()<1e-12f) return;
+			dir.Normalize();
+			Vector2 normal=new Vector2(-dir.Y,dir.X)*(thickness/2);
+
+			Color c=ColorX.FromArgb((int)alpha,Tint);
+			quad[0]=new PositionColoredTextured(p1.X+normal.X,p1.Y+normal.Y,0,c,0,0);
+			quad[1]=new PositionColoredTextured(p1.X-normal.X,p1.Y-normal.Y,0,c,0,0);
+			quad[2]=new PositionColoredTextured(p2.X+normal.X,p2.Y+normal.Y,0,c,0,0);
+			quad[3]=new PositionColoredTextured(p2.X-normal.X,p2.Y-normal.Y,0,c,0,0);
+
+			Renderer.DrawStrip(Matrix.Identity,null,quad);
 		}
 	}
 }

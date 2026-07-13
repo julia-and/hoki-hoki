@@ -1,12 +1,10 @@
 using System;
-using System.Drawing;
-using System.Collections;
-using SharpDX;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace SpriteUtilities {
 	/// <summary>
-	/// Summary description for TiledSpriteObject.
+	/// A SpriteObject whose texture tiles over an arbitrary width and height.
 	/// </summary>
 	public class TiledSpriteObject : SpriteObject {
 		private Vector2 size;
@@ -16,7 +14,7 @@ namespace SpriteUtilities {
 			set { ; /*(nop)*/ }
 		}
 
-		public TiledSpriteObject(Device device,SpriteTexture texture,float width,float height) : base(device,texture) {
+		public TiledSpriteObject(GraphicsDevice device,SpriteTexture texture,float width,float height) : base(device,texture) {
 			size=new Vector2(width,height);
 
 			//Set the vertices up properly

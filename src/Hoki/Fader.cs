@@ -1,9 +1,10 @@
 using System;
 using SpriteUtilities;
 using FloatMath;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace Hoki {
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 	/// <summary>
 	/// Updateable SpriteObject that can gradually fade itself to a given transparency
 	/// </summary>

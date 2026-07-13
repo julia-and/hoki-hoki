@@ -1,8 +1,9 @@
 using System;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework.Graphics;
 using SpriteUtilities;
 
 namespace Hoki {
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 	public abstract class MenuElement : SpriteObject {
 		public abstract void Select();
 		public abstract void Deselect();

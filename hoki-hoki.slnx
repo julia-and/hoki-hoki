@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Cryptography/Cryptography.csproj" />
+    <Project Path="src/FloatMath/FloatMath.csproj" />
+    <Project Path="src/Hoki/Hoki.csproj" />
+    <Project Path="src/SpriteUtilities/SpriteUtilities.csproj" />
+  </Folder>
+</Solution>

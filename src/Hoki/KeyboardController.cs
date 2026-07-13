@@ -1,6 +1,6 @@
 using System;
 using System.Collections;
-using System.Windows.Forms;
+using Microsoft.Xna.Framework.Input;
 
 namespace Hoki {
 	/// <summary>

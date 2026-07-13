@@ -1,8 +1,9 @@
 using System;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework.Graphics;
 using SpriteUtilities;
 
 namespace Hoki {
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 	/// <summary>
 	/// A graphic display of a time string
 	/// </summary>

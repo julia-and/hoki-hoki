@@ -1,11 +1,12 @@
 using System;
-using SharpDX;
-using SharpDX.Direct3D9;
-using DS=SharpDX.DirectSound;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Audio;
 using SpriteUtilities;
 using FloatMath;
 
 namespace Hoki {
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 	/// <summary>
 	/// Explosion graphic effect
 	/// </summary>
@@ -15,7 +16,7 @@ namespace Hoki {
 
 		public event EventHandler Die;
 		
-		public static DS.SecondarySoundBuffer[] Sounds;
+		public static SoundEffect Sound;
 		private static int currentSound;
 		private bool spark;
 
@@ -33,7 +34,7 @@ namespace Hoki {
 				Add((SpriteObject)particles[i]);
 			}
 
-			if (!spark && Game.FXOn) Sounds[(currentSound++)%Sounds.Length].Play(0,DS.PlayFlags.None);
+			if (!spark && Game.FXOn) Sound.Play(Game.FXVolume,0,0);
 		}
 		
 		private void onParticleDie(object sender, EventArgs e) {
@@ -97,21 +98,12 @@ namespace Hoki {
 			#endregion
 
 			protected override void deviceDraw(Matrix trans) {
-				var oldSourceBlend = device.GetRenderState<Blend>(RenderState.SourceBlend);
-				var oldDestBlend = device.GetRenderState<Blend>(RenderState.DestinationBlend);
-				bool changeSource=(oldSourceBlend != Blend.SourceAlpha);
-				bool changeDest=(oldDestBlend!=Blend.One);
-
-				//Switch to an additive blend
-				if (changeSource) device.SetRenderState(RenderState.SourceBlend,Blend.SourceAlpha);
-				if (changeDest) device.SetRenderState(RenderState.DebugMonitorToken, Blend.One);
-
-                base.deviceDraw(trans);
-
-				//Switch back to a regular blend
-				if (changeSource) device.SetRenderState(RenderState.SourceBlend, Blend.SourceAlpha);
-                if (changeDest) device.SetRenderState(RenderState.SourceBlend, Blend.InverseSourceAlpha);
-            }
+				//Switch to an additive blend for the spark, then back to a regular blend
+				BlendState old=Renderer.Blend;
+				Renderer.Blend=BlendState.Additive;
+				base.deviceDraw(trans);
+				Renderer.Blend=old;
+			}
 		}
 		
 		/// <summary>

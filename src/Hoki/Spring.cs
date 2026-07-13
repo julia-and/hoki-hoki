@@ -1,11 +1,12 @@
 using System;
-using SharpDX;
-using SharpDX.Direct3D9;
-using DS=SharpDX.DirectSound;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Audio;
 using SpriteUtilities;
 using FloatMath;
 
 namespace Hoki {
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 	/// <summary>
 	/// Reverses the direction of the heli when hit
 	/// </summary>
@@ -16,7 +17,7 @@ namespace Hoki {
 		private Vector2 forward;	//Direction the surface is facing
 		private float frameTime;	//if >0, Time until switching frames
 
-		public static DS.SecondarySoundBuffer[] Sounds;
+		public static SoundEffect Sound;
 		private static int currentSound;
 
 		private float soundWait;
@@ -58,7 +59,7 @@ namespace Hoki {
 			frameTime=frameLength;
 			if (Game.FXOn && soundWait<0) {
 				soundWait=soundDelay;
-				Sounds[(currentSound++)%Sounds.Length].Play(0,DS.PlayFlags.None); // PlayFlags.Default
+				Sound.Play(Game.FXVolume,0,0); // PlayFlags.Default
 			}
 		}
 

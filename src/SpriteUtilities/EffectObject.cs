@@ -1,7 +1,7 @@
-using SharpDX;
-using SharpDX.Direct3D9;
 using System;
 using System.Collections;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace SpriteUtilities {
 
@@ -42,9 +42,6 @@ namespace SpriteUtilities {
 			set { effect=value; }
 		}
 
-		/// <summary>
-		/// 
-		/// </summary>
 		public Effect InheritedEffect {
 			get {
 				/* If there is an effect, it will override parent's - return it
@@ -65,7 +62,7 @@ namespace SpriteUtilities {
 		}
 		#endregion
 
-		public EffectObject(Device device) : base(device) {
+		public EffectObject(GraphicsDevice device) : base(device) {
 			FXConstants=new ArrayList();
 		}
 
@@ -92,11 +89,10 @@ namespace SpriteUtilities {
 		#endregion
 
 		#region drawing
-		public override void Draw(Matrix parentMatrix, Vector2 parentShift) {
-			base.Draw (parentMatrix, parentShift);
+		public override void Draw(Matrix parentMatrix,Vector2 parentShift) {
+			base.Draw(parentMatrix,parentShift);
 			allConstants=null;	//Prevent memory leakage
 		}
-
 
 		protected override void deviceDraw(Matrix trans) {
 			//Effect inheritance
@@ -110,10 +106,10 @@ namespace SpriteUtilities {
 			if (effect!=null) {
 				current=effect;					//Override effect if not null
 				allConstants.Clear();			//If effect is overriden, constants must be cleared
-				if (technique!=null) 
-					effect.Technique=technique;	//Set technique if one exists
+				if (technique!=null)
+					effect.CurrentTechnique=effect.Techniques[technique];	//Set technique if one exists
 			}
-			
+
 			//Add own constants to the inherited ones
 			allConstants.AddRange(FXConstants);
 
@@ -121,14 +117,14 @@ namespace SpriteUtilities {
 			if (current!=null) foreach (FXConstant fxc in allConstants) sendFXC(fxc,trans);
 		}
 
-		protected override void drawChild(TransformedObject child, Matrix trans) {
+		protected override void drawChild(TransformedObject child,Matrix trans) {
 			//Reset the lastConstant list for this inheritance level
 			lastConst=allConstants;
-			base.drawChild (child, trans);
+			base.drawChild(child,trans);
 		}
 
 		#endregion
-		
+
 		/// <summary>
 		/// Sets an effect constant
 		/// </summary>
@@ -147,7 +143,7 @@ namespace SpriteUtilities {
 			/// The data that should be passed to the constant
 			/// </summary>
 			public ConstType Type;
-		
+
 			public FXConstant(string Name,ConstType Type) {
 				this.Name=Name;
 				this.Type=Type;

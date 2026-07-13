@@ -1,11 +1,12 @@
 using System;
-using System.Drawing;
-using System.Windows.Forms;
-using SharpDX;
-using SharpDX.Direct3D9;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using SpriteUtilities;
 
 namespace Hoki {
+using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 	/// <summary>
 	/// A single pixel in the FLECKO.NET intro effect
 	/// </summary>
@@ -29,7 +30,7 @@ namespace Hoki {
 			get { return base.coords+offset; }
 		}
 
-		public FleckoPX(Form frm,Device device,SpriteTexture tex,float pxDist) : base(device,tex) {
+		public FleckoPX(Device device,SpriteTexture tex,float pxDist) : base(device,tex) {
 			//Distance
 			this.pxDist=pxDist;
 
@@ -38,22 +39,19 @@ namespace Hoki {
 			bgTarget=0;
 			offset=new Vector2();
 
-			//Mouse events
-			frm.MouseMove+=new MouseEventHandler(OnMouseMove);	//Change offset relative to mouse distance
-			frm.MouseDown+=new MouseEventHandler(OnMouseDown);	//Change color relative to mouse distance, lock colors
-			frm.MouseUp+=new MouseEventHandler(OnMouseUp);		//Unlock colors
-
 			//Set fade countdown
 			timeLeft=liveTime;
 		}
 
-		public void Unhook(Form frm) {
-			frm.MouseMove-=new MouseEventHandler(OnMouseMove);
-			frm.MouseDown-=new MouseEventHandler(OnMouseDown);
-			frm.MouseUp-=new MouseEventHandler(OnMouseUp);
+		public void Unhook() {
+			//Mouse state is polled in Update now; nothing to detach
 		}
 
 		virtual public void Update(float elapsedTime) {
+			//Mouse influence (was WinForms MouseMove/MouseDown/MouseUp events)
+			MouseState mouse=Mouse.GetState();
+			updateMouse(mouse);
+
 			//Decrease and update the blue/green tint values
 			if (bg!=bgTarget) {
 				//Approach target color
@@ -62,7 +60,7 @@ namespace Hoki {
 				if (Math.Abs(bg-bgTarget)<0.5f) bg=bgTarget;
 
 				//Adjust the sprite's tint value
-				Tint= System.Drawing.Color.FromArgb(255,(int)bg,(int)bg);
+				Tint=ColorX.FromArgb(255,(int)bg,(int)bg);
 			}
 
 			//Move closer to the targeted offset
@@ -85,15 +83,15 @@ namespace Hoki {
 			return mousePos;
 		}
 
-		private void OnMouseMove(object sender, MouseEventArgs e) {
+		private void updateMouse(MouseState mouse) {
 			//Get usable coordinates
-			Vector2 mousePos=convertMouse(e.X,e.Y);
+			Vector2 mousePos=convertMouse(mouse.X,mouse.Y);
 
 			//Get distances
 			float xd=mousePos.X-X,yd=mousePos.Y-Y;
 			float d=Math.Max((float)Math.Sqrt(Math.Pow(xd,2)+Math.Pow(yd,2)),1.0f);
 
-			//If the pixel is outside the mouse's influence radius, no offset 
+			//If the pixel is outside the mouse's influence radius, no offset
 			if (d>radius) offsetTarget.X=offsetTarget.Y=0.0f;
 			//Otherwise, set offset by mouse distance
 			else {
@@ -101,25 +99,15 @@ namespace Hoki {
 				offsetTarget.Y=(float)(-yd/d*Math.Sqrt(radius-d)*pxDist);
 			}
 
-			//Add to whiteness if pixel colors are locked
-			OnMouseDown(this,e);
+			if (mouse.RightButton==ButtonState.Pressed) {
+				//Set whiteness target from 0 to 255 based on distance (colors locked while held)
+				float dd=(float)Math.Sqrt(Math.Pow(mousePos.X-X,2)+Math.Pow(mousePos.Y-Y,2));
+				if (dd<radius) bgTarget=Math.Max(bgTarget,(radius-dd)/radius*255);
+			} else if (rightWasDown) bgTarget=0; //Reset color target on release
+
+			rightWasDown=mouse.RightButton==ButtonState.Pressed;
 		}
 
-		private void OnMouseDown(object sender, MouseEventArgs e) {
-			if (e.Button==MouseButtons.Right) {
-				//Get usable coordinates
-				Vector2 mousePos=convertMouse(e.X,e.Y);
-
-				//Get distance
-				float d=(float)Math.Sqrt(Math.Pow(mousePos.X-X,2)+Math.Pow(mousePos.Y-Y,2));
-
-				//Set whiteness target from 0 to 255 based on distance
-				if (d<radius) bgTarget=Math.Max(bgTarget,(radius-d)/radius*255);
-			}
-		}
-
-		private void OnMouseUp(object sender,MouseEventArgs e) {
-			if (e.Button==MouseButtons.Right) bgTarget=0; //Reset color target
-		}
+		private bool rightWasDown;
 	}
 }
