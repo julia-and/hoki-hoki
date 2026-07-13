@@ -61,6 +61,14 @@ namespace Hoki {
 			return controlMap[(int)control];
 		}
 
+		/// <summary>
+		/// Programmatically presses a control (down+up), as if its key were tapped
+		/// </summary>
+		public void Press(Controls control) {
+			ControlDown(this,new ControlEventArgs(control));
+			ControlUp(this,new ControlEventArgs(control));
+		}
+
 		private void OnKeyDown(object sender, KeyEventArgs e) {
 			for(int i=0;i<numControls;i++) 
 				if (e.KeyCode==controlMap[i]) {

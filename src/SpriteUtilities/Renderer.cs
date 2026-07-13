@@ -28,9 +28,14 @@ namespace SpriteUtilities {
 			Batch=new SpriteBatch(device);
 		}
 
+		//Logical scene size; the viewport may be larger (resizable window renders at native res)
+		public static int LogicalWidth=640,LogicalHeight=480;
+
 		public static void SetProjection(int width,int height) {
 			//Matches D3DX OrthoOffCenterLH(0.5,w+0.5,h+0.5,0.5,0,1): y-down pixel coordinates.
 			//Wide z range because legacy vertices carry z=1 and depth testing is off anyway.
+			LogicalWidth=width;
+			LogicalHeight=height;
 			Effect.Projection=Matrix.CreateOrthographicOffCenter(0.5f,width+0.5f,height+0.5f,0.5f,-10f,10f);
 		}
 

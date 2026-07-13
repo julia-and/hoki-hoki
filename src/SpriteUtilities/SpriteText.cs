@@ -111,7 +111,10 @@ namespace SpriteUtilities {
 				if ((format&FontDrawFlags.VerticalCenter)!=0)	pos.Y=(rect.Height-size.Y)/2;
 			}
 
-			Renderer.Batch.Begin(SpriteSortMode.Deferred,BlendState.NonPremultiplied,null,null,null,null,trans);
+			//SpriteBatch projects in viewport pixels, not the logical ortho projection the
+			//rest of the scene uses — scale logical coords up to match.
+			float viewScale=Renderer.Device.Viewport.Width/(float)Renderer.LogicalWidth;
+			Renderer.Batch.Begin(SpriteSortMode.Deferred,BlendState.NonPremultiplied,null,null,null,null,trans*Matrix.CreateScale(viewScale));
 			font.DrawText(Renderer.Batch,drawn,pos,ColorX.FromArgb((int)alpha,color));
 			Renderer.Batch.End();
 		}

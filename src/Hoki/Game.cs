@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using FontStashSharp;
 using Microsoft.Xna.Framework;
@@ -65,6 +66,8 @@ namespace Hoki {
 			height;
 		private Vector2
 			centerPoint;	//Center of the rendering area
+		private Viewport
+			gameViewport;	//Letterboxed 4:3 viewport within the (resizable) backbuffer
 		#endregion
 
 		#region dx
@@ -99,6 +102,10 @@ namespace Hoki {
 			blankTex;
 		private Level
 			playtestLevel;	//Set when a map path was passed on the command line
+		private string
+			tracePath;		//--trace <file>: dump heli positions for the editor's trace overlay
+		private List<Vector3>
+			tracePoints=new List<Vector3>();	//x,y = heli midpoint, z = rotation (radians)
 		private Song
 			currentSong;	//Song being played
 		private bool
@@ -391,6 +398,8 @@ namespace Hoki {
 			graphics.PreferredBackBufferWidth=640;
 			graphics.PreferredBackBufferHeight=480;
 			Window.Title="Hoki";
+			Window.AllowUserResizing=true;
+			Window.ClientSizeChanged+=onResize;
 			IsMouseVisible=false;
 			IsFixedTimeStep=false;	//The game keeps its own fixed-step accumulator
 
@@ -598,6 +607,10 @@ namespace Hoki {
 				playtestLevel=new Level(StringCrypt.MD5(mapText));
 				playtestLevel.GameMap=mapText;
 				playtestLevel.Name=Path.GetFileNameWithoutExtension(args[0]);
+
+				//--trace <file>: record heli positions for the editor's trace overlay
+				for (int i=1;i<args.Length-1;i++)
+					if (args[i]=="--trace") tracePath=args[i+1];
 			}
 
 			//Load sound effects (SoundEffect.Play spawns a new voice per call, so one instance per effect suffices)
@@ -701,11 +714,14 @@ namespace Hoki {
 					timeGraphic.setTime(Score.GetTimeString((int)(gameTime*1000)));
 					if (started && !finished) {
 						gameTime+=et;
+						if (tracePath!=null) tracePoints.Add(new Vector3(focusedHeli.Midpoint,focusedHeli.Rotation));
 					} else if (dead) {
 						deadTime-=et;
-						if (deadTime<0) {
-							setGameState(GameState.Menu);
-							break;
+						if (deadTime<0 && !paused) {
+							//Explosion has played out; offer restart/quit instead of forcing back to the level select
+							pauseMenu.RemoveElement(continueButton);
+							pauseMenu.Y=(height-pauseMenu.Height)/2;
+							showPauseMenu();
 						}
 					}
 
@@ -739,8 +755,27 @@ namespace Hoki {
 			}
 		}
 
+		/// <summary>
+		/// Resizes the backbuffer to the window and letterboxes a 4:3 viewport into it.
+		/// The scene keeps its logical 640x480 projection and rasterizes at native resolution.
+		/// </summary>
+		private void onResize(object sender,EventArgs e) {
+			int w=Window.ClientBounds.Width,h=Window.ClientBounds.Height;
+			if (w==0 || h==0) return;	//Minimized
+			if (w!=graphics.PreferredBackBufferWidth || h!=graphics.PreferredBackBufferHeight) {
+				graphics.PreferredBackBufferWidth=w;
+				graphics.PreferredBackBufferHeight=h;
+				graphics.ApplyChanges();
+			}
+			float scale=Math.Min(w/(float)width,h/(float)height);
+			int vw=(int)(width*scale),vh=(int)(height*scale);
+			gameViewport=new Viewport((w-vw)/2,(h-vh)/2,vw,vh);
+		}
+
 		protected override void Draw(GameTime xnaTime) {
-			device.Clear(background);
+			device.Clear(background);	//Clears the whole backbuffer, letterbox bars included
+
+			if (gameViewport.Width>0) device.Viewport=gameViewport;
 
 			//Perform the drawing operations
 			root.Draw();
@@ -2264,7 +2299,29 @@ namespace Hoki {
 			pauseMenu.Y=(height-pauseMenu.Height)/2;
 		}
 
+		/// <summary>
+		/// Appends the recorded heli path (one attempt) to the --trace file. Best-effort.
+		/// </summary>
+		private void flushTrace() {
+			if (tracePath==null || tracePoints.Count==0) return;
+			try {
+				using (StreamWriter w=new StreamWriter(tracePath,true)) {
+					//Rotation as integer millirads: locale-proof, plenty of precision
+					foreach (Vector3 p in tracePoints) w.WriteLine((int)p.X+","+(int)p.Y+","+(int)MathF.Round(p.Z*1000));
+					w.WriteLine("---");
+				}
+			} catch {}
+			tracePoints.Clear();
+		}
+
+		protected override void OnExiting(object sender,ExitingEventArgs e) {
+			flushTrace();	//Window closed mid-attempt
+			base.OnExiting(sender,e);
+		}
+
 		public void mainEnd() {
+			flushTrace();
+
 			//Remove graphics
 			root.Clear();
 			update.Clear();
@@ -2894,6 +2951,12 @@ namespace Hoki {
 			gameMenu.Unlock();
 		}
 
+		private void showPauseMenu() {
+			pauseMenuLayer.FadeTarget=TransformedObject.MaxAlpha;
+			pauseMenu.Unlock();
+			paused=true;
+		}
+
 		private void onContinue(object sender, EventArgs e) {
 			pauseMenuLayer.FadeTarget=0;
 			pauseMenu.Lock();
@@ -2982,8 +3045,25 @@ namespace Hoki {
 			} else if (e.KeyCode==Keys.F7) error("OH SHITS!");
 			*/
 
-			//Quit on escape
-			if (e.KeyCode==Keys.Escape) Exit();
+			//Escape: toggle the pause menu in-game, navigate back (cancel) in menus, skip the intro
+			if (e.KeyCode==Keys.Escape) {
+				switch (gameState) {
+					case GameState.Main:
+						if (dead) break;	//The death menu owns input
+						if (paused) onContinue(this,EventArgs.Empty);
+						else if (!finished) showPauseMenu();
+						break;
+					case GameState.Menu:
+						controller.Press(Hoki.Controls.B);
+						break;
+					case GameState.Flecko:
+						fleckoTimeLeft=0;
+						break;
+				}
+			}
+
+			//Quick restart during gameplay
+			if (e.KeyCode==Keys.R && gameState==GameState.Main) onRestart(this,EventArgs.Empty);
 		}
 
 		#endregion
@@ -3091,15 +3171,11 @@ namespace Hoki {
 				case GameState.Main:
 				switch (e.Control) {
 					case Hoki.Controls.A:
-						if (finished) setGameState(GameState.Menu);
+						if (finished && !paused && !dead) setGameState(GameState.Menu);	//Dead: wait for the death menu, which handles A itself
 						break;
 					case Hoki.Controls.Start:
-						if (finished) setGameState(GameState.Menu);
-						else {
-							pauseMenuLayer.FadeTarget=TransformedObject.MaxAlpha;
-							pauseMenu.Unlock();
-							paused=true;
-						}
+						if (finished && !paused && !dead) setGameState(GameState.Menu);
+						else if (!paused && !dead) showPauseMenu();
 						break;
 				}
 					break;
