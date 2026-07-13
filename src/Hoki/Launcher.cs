@@ -55,7 +55,6 @@ using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 		/// <param name="map">The Map this belongs to</param>
 		public Launcher(Device device,SpriteTexture tex,SpriteTexture mineTex,float frequency,float offset,Map map) : base(device,tex) {
 			//Store direction, map ref, mine tex, catcher
-			this.direction=direction;
 			this.mineTex=mineTex;
 			this.map=map;
 

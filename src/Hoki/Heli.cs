@@ -65,7 +65,6 @@ using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 
 		public static SoundEffect HitSound;
 		public static SoundEffect HealSound;
-		private static int currentSound=0;
 		private float soundWait;
 		private const float soundDelay=0.07f;
 

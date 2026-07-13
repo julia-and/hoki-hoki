@@ -2,7 +2,6 @@ using System;
 using Microsoft.Xna.Framework;
 using System.Collections;
 using Microsoft.Xna.Framework.Input;
-using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using SpriteUtilities;
 

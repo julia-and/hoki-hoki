@@ -18,7 +18,6 @@ using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 		private float frameTime;	//if >0, Time until switching frames
 
 		public static SoundEffect Sound;
-		private static int currentSound;
 
 		private float soundWait;
 		private const float soundDelay=0.07f;

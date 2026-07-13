@@ -17,7 +17,6 @@ using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 		public event EventHandler Die;
 		
 		public static SoundEffect Sound;
-		private static int currentSound;
 		private bool spark;
 
 		public Explosion(Device device,SpriteTexture tex,int numParticles,bool spark) : base(device,null) {
