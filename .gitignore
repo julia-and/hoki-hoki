@@ -361,3 +361,4 @@ src/Hoki/levels/
 
 # ImGui per-user window layout
 imgui.ini
+.idea/
