@@ -678,9 +678,9 @@ public class Game : Microsoft.Xna.Framework.Game
         //Shared renderer state: ortho pixel camera + blend/sampler states applied per draw
         SpriteObject.SetupCamera(device, width, height);
 
-        //Initialize fonts (Century Gothic replaced by a bundled free geometric sans)
+        //Initialize fonts (original Century Gothic Bold replaced by Jost Bold, an OFL look-alike)
         fontSystem = new FontSystem();
-        fontSystem.AddFont(getStream("Hoki.fonts.Questrial-Regular.ttf"));
+        fontSystem.AddFont(getStream("Hoki.resources.fonts.Jost.Jost-Bold.ttf"));
         menuFontSmall = fontSystem.GetFont(13);
         menuFontLarge = fontSystem.GetFont(15);
         boneFont = fontSystem.GetFont(72);

@@ -24,7 +24,7 @@
     <EmbeddedResource Include="resources/**/*.png;resources/**/*.bmp;resources/**/*.jpg;resources/**/*.dat" />
     <EmbeddedResource Include="data/levels;data/medals;data/maps/**/*.map;data/themes/*.theme;data/ghosts/*.ghost" />
     <EmbeddedResource Include="fx/*.wav" />
-    <EmbeddedResource Include="fonts/*.ttf" />
+    <EmbeddedResource Include="resources/fonts/**/*.ttf" />
   </ItemGroup>
 
   <ItemGroup>
