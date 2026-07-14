@@ -276,14 +276,16 @@ public partial class EditorGame : Game
             dl.AddText(new NVec2(s.X + 8, s.Y - 8), lCol, $"{l.FreqPct}%/{l.OffPct}%");
         }
 
-        //Decals (sprites): 4px units
-        uint dCol = rgba(120, 120, 120);
+        //Decals (sprites): 4px units. Red when the index doesn't exist in the theme (game skips those).
+        uint dCol = rgba(120, 120, 120), dBad = rgba(220, 60, 60);
+        int themeDecals = themeDecalCount();
         foreach (var m in doc.Decals)
         {
+            uint col = themeDecals >= 0 && m.Index >= themeDecals ? dBad : dCol;
             var c = worldToScreen(m.X * 4, m.Y * 4);
             float r = 5 * zoom;
-            dl.AddCircle(c, r, dCol, 4, 1.5f);  //Diamond
-            dl.AddText(new NVec2(c.X + r, c.Y - r), dCol, $"#{m.Index} d{m.Depth:0.00}");
+            dl.AddCircle(c, r, col, 4, 1.5f);   //Diamond
+            dl.AddText(new NVec2(c.X + r, c.Y - r), col, $"#{m.Index} d{m.Depth:0.00}");
         }
 
         //Nodes on top

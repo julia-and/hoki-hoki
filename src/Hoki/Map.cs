@@ -451,6 +451,7 @@ public class Map : SpriteObject, Updateable
                         data = line.Split(',');
 
                         int index = int.Parse(data[2]);
+                        if (index < 0 || index >= spriteTextures.Count) break; //Theme has no decal at this index; skip rather than crash
                         MapSprite m = new MapSprite(device, (SpriteTexture)spriteTextures[index], outMap, new Vector2(int.Parse(data[0]) * 4 - 4f, int.Parse(data[1]) * 4 - 4f), float.Parse(data[3]), (float)spriteRates[index]);
                         outMap.spriteLayer.Add(m);
                         outMap.sprites.Add(m);

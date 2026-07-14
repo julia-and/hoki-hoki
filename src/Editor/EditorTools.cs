@@ -24,6 +24,8 @@ public partial class EditorGame
     private int launcherSender = -1;            //Launcher tool: index of placed sender awaiting catcher
     private int pendingDecalIndex = 0;
     private float pendingDecalDepth = 1f;
+    private string decalCountTheme;     //Theme name the cached count belongs to
+    private int decalCountCache = -1;   //-1 = theme file not found (count unknown)
     private int pencilLastNode = -1;
     private readonly List<NVec2> curvePoints = new();   //Curve tool: control points (world px, grid-snapped)
     private int curveSpacing = 6;                       //Node spacing along the curve, map units
@@ -34,6 +36,25 @@ public partial class EditorGame
     private NVec2 dragRemainder;    //Sub-unit drag distance carried between frames
 
     private const float PickDist = 8f;  //Screen px hit radius
+
+    /// How many decal slots the current theme defines; -1 when the theme file can't be found.
+    /// The game indexes theme decals directly, so placing an index past this count breaks the map.
+    private int themeDecalCount()
+    {
+        if (doc.Theme != decalCountTheme)
+        {
+            decalCountTheme = doc.Theme;
+            decalCountCache = -1;
+            try
+            {
+                string p = System.IO.Path.Combine(findDefaultMapDir(), "../../themes", doc.Theme ?? "");
+                if (System.IO.File.Exists(p))
+                    decalCountCache = System.IO.File.ReadAllLines(p).Count(l => l.Trim() is { Length: > 0 } t && t[0] != '#');
+            }
+            catch { /* unreadable theme file = unknown count */ }
+        }
+        return decalCountCache;
+    }
 
     #region tool switching
     private void switchTool(Tool t)
@@ -637,7 +658,9 @@ public partial class EditorGame
                 break;
 
             case Tool.Decal:
-                if (click)
+                int decalCount = themeDecalCount();
+                if (decalCount >= 0 && pendingDecalIndex >= decalCount) pendingDecalIndex = Math.Max(0, decalCount - 1);
+                if (click && decalCount != 0)   //Theme with no decals: nothing valid to place
                 {
                     snapshot();
                     doc.Decals.Add(new Decal { X = (int)MathF.Round(world.X / 4), Y = (int)MathF.Round(world.Y / 4), Index = pendingDecalIndex, Depth = pendingDecalDepth });
@@ -645,7 +668,7 @@ public partial class EditorGame
                 if (rclick) { int d = hitDecalAt(world); if (d >= 0) { snapshot(); doc.Decals.RemoveAt(d); selection.Clear(); } }
                 //Wheel changes index, shift+wheel depth (like the original)
                 if (io.MouseWheel != 0 && io.KeyShift) pendingDecalDepth = Math.Clamp(pendingDecalDepth + 0.05f * MathF.Sign(io.MouseWheel), 0, 1);
-                else if (io.MouseWheel != 0 && io.KeyAlt) pendingDecalIndex = Math.Max(0, pendingDecalIndex + MathF.Sign(io.MouseWheel));
+                else if (io.MouseWheel != 0 && io.KeyAlt) pendingDecalIndex = Math.Clamp(pendingDecalIndex + (int)MathF.Sign(io.MouseWheel), 0, decalCount < 0 ? int.MaxValue : Math.Max(0, decalCount - 1));
                 break;
         }
     }
@@ -821,7 +844,11 @@ public partial class EditorGame
             case Tool.Pad: ImGui.TextDisabled($"type: {pendingPadType switch { 0 => "START", 2 => "HEAL", _ => "END" }}\nright-click cycles"); break;
             case Tool.Spring: ImGui.TextDisabled($"turns: {pendingSpringTurns}\nright-click rotates"); break;
             case Tool.Launcher: ImGui.TextDisabled($"turns: {pendingLauncherTurns}\nclick sender, then catcher\nright-click rotates"); break;
-            case Tool.Decal: ImGui.TextDisabled($"index {pendingDecalIndex} depth {pendingDecalDepth:0.00}\nalt+wheel index\nshift+wheel depth"); break;
+            case Tool.Decal:
+                int dc = themeDecalCount();
+                if (dc == 0) ImGui.TextColored(new System.Numerics.Vector4(1, 0.3f, 0.3f, 1), $"theme {doc.Theme} has no decals");
+                else ImGui.TextDisabled($"index {pendingDecalIndex}{(dc > 0 ? $"/{dc - 1}" : "")} depth {pendingDecalDepth:0.00}\nalt+wheel index\nshift+wheel depth");
+                break;
             case Tool.Wall: ImGui.TextDisabled("click two nodes\nshift chains"); break;
             case Tool.Curve:
                 ImGui.TextDisabled($"{curvePoints.Count} points\nclick places, right-click removes\nEnter/double-click commits\nEsc cancels");
