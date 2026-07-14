@@ -49,6 +49,7 @@ public partial class EditorGame : Game
     private readonly List<List<TraceSample>> traceSegments = new();
     private DateTime traceStamp;
     private static readonly string tracePath = Path.Combine(Path.GetTempPath(), "hokiedit-playtest.trace");
+    private bool playtestInvincible;    //Pass --invincible to the game on playtest (game skips score recording)
 
     //Trace playback (pseudo-ghost)
     private int traceAttempt = -1;  //-1 = follow latest attempt
@@ -315,6 +316,7 @@ public partial class EditorGame : Game
                 if (ImGui.MenuItem("Save As...")) { browserOpen = true; browserSave = true; }
                 ImGui.Separator();
                 if (ImGui.MenuItem("Playtest", ModName + "+P")) playtest();
+                if (ImGui.MenuItem("Invincible Playtest", null, playtestInvincible)) playtestInvincible = !playtestInvincible;
                 ImGui.Separator();
                 if (ImGui.MenuItem("Quit", ModName + "+Q")) Exit();
                 ImGui.EndMenu();
@@ -417,7 +419,7 @@ public partial class EditorGame : Game
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = exe,
-                Arguments = "\"" + tmp + "\" --trace \"" + tracePath + "\"",
+                Arguments = "\"" + tmp + "\" --trace \"" + tracePath + "\"" + (playtestInvincible ? " --invincible" : ""),
                 WorkingDirectory = gameDir  //So config/scores/levels resolve like a normal run
             });
         }

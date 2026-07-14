@@ -636,6 +636,9 @@ public class Game : Microsoft.Xna.Framework.Game
             //--trace <file>: record heli positions for the editor's trace overlay
             for (int i = 1; i < args.Length - 1; i++)
                 if (args[i] == "--trace") tracePath = args[i + 1];
+
+            //--invincible: playtest without dying; onFinish skips score recording while set
+            Heli.Invincible = Array.IndexOf(args, "--invincible") > 0;
         }
 
         //Load sound effects (SoundEffect.Play spawns a new voice per call, so one instance per effect suffices)
@@ -3612,12 +3615,16 @@ public class Game : Microsoft.Xna.Framework.Game
 
         Score score = new Score(player.Name, (int)(gameTime * 1000), heli.Perfect, player.Easy);
 
-        //Insert the score into the main list if not in easy mode
-        if (!player.Easy) if (playLevel.InsertScore(score)) writeScores();
+        //Invincible runs never record scores
+        if (!Heli.Invincible)
+        {
+            //Insert the score into the main list if not in easy mode
+            if (!player.Easy) if (playLevel.InsertScore(score)) writeScores();
 
-        //Give the player the score 
-        player.AddScore(playLevel.Hash, score);
-        writePlayers();
+            //Give the player the score
+            player.AddScore(playLevel.Hash, score);
+            writePlayers();
+        }
 
         if (playingMainGame)
         {

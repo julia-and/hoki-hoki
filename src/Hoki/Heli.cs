@@ -12,8 +12,8 @@ namespace Hoki;
 public class Heli : AASpriteObject, Updateable
 {
     #region vars
-    private const bool
-        invincible = false; //DEBUG
+    /// <summary>Playtest-only (--invincible flag). While set, the game records no scores.</summary>
+    public static bool Invincible;
 
     public const int
         FullHealth = 3,
@@ -405,7 +405,7 @@ public class Heli : AASpriteObject, Updateable
                 {
                     hurt = true;
                     immunity = immuneTime;
-                    if (!invincible) health = Math.Max(0, health - 1);
+                    if (!Invincible) health = Math.Max(0, health - 1);
 
                     if (health == 0)
                     {
