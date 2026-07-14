@@ -43,6 +43,7 @@ public class ImGuiRenderer
     private int prevScroll, prevScrollH;
     private KeyboardState prevKeys;
     private MouseState prevMouse;
+    private bool prevActive = true;
 
     public ImGuiRenderer(Game game)
     {
@@ -114,6 +115,21 @@ public class ImGuiRenderer
 
         var mouse = Mouse.GetState();
         var keys = Keyboard.GetState();
+
+        //MonoGame reports input even when the window is unfocused; swallow it.
+        //Keep the prev snapshots current so refocusing doesn't replay accumulated deltas.
+        if (!game.IsActive)
+        {
+            if (prevActive) io.AddFocusEvent(false);    //Releases held keys/mods (e.g. cmd from cmd+tab)
+            prevActive = false;
+            prevScroll = mouse.ScrollWheelValue;
+            prevScrollH = mouse.HorizontalScrollWheelValue;
+            prevMouse = mouse;
+            prevKeys = keys;
+            ImGui.NewFrame();
+            return;
+        }
+        if (!prevActive) { io.AddFocusEvent(true); prevActive = true; }
 
         io.AddMousePosEvent(mouse.X, mouse.Y);
         if (mouse.LeftButton != prevMouse.LeftButton) io.AddMouseButtonEvent(0, mouse.LeftButton == ButtonState.Pressed);
