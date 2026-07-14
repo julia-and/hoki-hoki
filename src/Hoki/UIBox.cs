@@ -1,89 +1,91 @@
-using System;
-using Microsoft.Xna.Framework.Graphics;
 using SpriteUtilities;
 
-namespace Hoki {
-using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
-	/// <summary>
-	/// A graphical box
-	/// </summary>
-	public class UIBox : SpriteObject {
-		private int
-			boxWidth,
-			boxHeight;
+using Device = Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 
-		private SpriteObject 
-			tlc,
-			trc,
-			blc,
-			brc,
-			top,
-			left,
-			right,
-			bottom,
-			middle;
+namespace Hoki;
+/// <summary>
+/// A graphical box
+/// </summary>
+public class UIBox : SpriteObject
+{
+    private int
+        boxWidth,
+        boxHeight;
 
-		public UIBox(Device device,UIBoxTex tex,int width,int height) : base(device,null) {
-			//Store the size
-			boxWidth=width;
-			boxHeight=height;
+    private SpriteObject
+        tlc,
+        trc,
+        blc,
+        brc,
+        top,
+        left,
+        right,
+        bottom,
+        middle;
 
-			//Make objects
-			tlc=new SpriteObject(device,tex.Tlc);
-			trc=new SpriteObject(device,tex.Trc);
-			blc=new SpriteObject(device,tex.Blc);
-			brc=new SpriteObject(device,tex.Brc);
-			top=new SpriteObject(device,tex.Top);
-			left=new SpriteObject(device,tex.Left);
-			right=new SpriteObject(device,tex.Right);
-			bottom=new SpriteObject(device,tex.Bottom);
-			middle=new SpriteObject(device,tex.Middle);
+    public UIBox(Device device, UIBoxTex tex, int width, int height) : base(device, null)
+    {
+        //Store the size
+        boxWidth = width;
+        boxHeight = height;
 
-			//Position them
-			top.X=tlc.Width;
-			top.Width=width-tlc.Width-trc.Width;
+        //Make objects
+        tlc = new SpriteObject(device, tex.Tlc);
+        trc = new SpriteObject(device, tex.Trc);
+        blc = new SpriteObject(device, tex.Blc);
+        brc = new SpriteObject(device, tex.Brc);
+        top = new SpriteObject(device, tex.Top);
+        left = new SpriteObject(device, tex.Left);
+        right = new SpriteObject(device, tex.Right);
+        bottom = new SpriteObject(device, tex.Bottom);
+        middle = new SpriteObject(device, tex.Middle);
 
-			trc.X=top.X+top.Width;
+        //Position them
+        top.X = tlc.Width;
+        top.Width = width - tlc.Width - trc.Width;
 
-			left.Y=top.Height;
-			left.Height=height-trc.Height-brc.Height;
+        trc.X = top.X + top.Width;
 
-			blc.Y=left.Y+left.Height;
+        left.Y = top.Height;
+        left.Height = height - trc.Height - brc.Height;
 
-			right.X=trc.X;
-			right.Y=left.Y;
-			right.Height=left.Height;
+        blc.Y = left.Y + left.Height;
 
-			bottom.X=top.X;
-			bottom.Y=blc.Y;
-			bottom.Width=top.Width;
+        right.X = trc.X;
+        right.Y = left.Y;
+        right.Height = left.Height;
 
-			brc.X=trc.X;
-			brc.Y=blc.Y;
+        bottom.X = top.X;
+        bottom.Y = blc.Y;
+        bottom.Width = top.Width;
 
-			middle.X=tlc.Width;
-			middle.Y=tlc.Height;
-			middle.Width=top.Width;
-			middle.Height=left.Height;
+        brc.X = trc.X;
+        brc.Y = blc.Y;
 
-			//Add to draw list
-			Add(tlc);
-			Add(trc);
-			Add(blc);
-			Add(brc);
-			Add(top);
-			Add(left);
-			Add(right);
-			Add(bottom);
-			Add(middle);
-		}
+        middle.X = tlc.Width;
+        middle.Y = tlc.Height;
+        middle.Width = top.Width;
+        middle.Height = left.Height;
 
-		public override float Width {
-			get { return boxWidth; }
-		}
+        //Add to draw list
+        Add(tlc);
+        Add(trc);
+        Add(blc);
+        Add(brc);
+        Add(top);
+        Add(left);
+        Add(right);
+        Add(bottom);
+        Add(middle);
+    }
 
-		public override float Height {
-			get { return boxHeight; }
-		}
-	}
+    public override float Width
+    {
+        get { return boxWidth; }
+    }
+
+    public override float Height
+    {
+        get { return boxHeight; }
+    }
 }

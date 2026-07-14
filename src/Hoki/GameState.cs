@@ -1,6 +1,7 @@
-public enum GameState{
-	None,
-	Flecko,
-	Menu,
-	Main
+public enum GameState
+{
+    None,
+    Flecko,
+    Menu,
+    Main
 }

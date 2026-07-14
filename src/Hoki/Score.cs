@@ -1,57 +1,65 @@
 using System;
-using FloatMath;
 
-namespace Hoki {
-	/// <summary>
-	/// Summary description for Score.
-	/// </summary>
-	public class Score {
-		private string name,timeString;
-		private int time;
-		private bool perfect,easy;
+namespace Hoki;
 
-		public string Name {
-			get { return name; }
-			set { name=value; }
-		}
+/// <summary>
+/// Summary description for Score.
+/// </summary>
+public class Score
+{
+    private string name, timeString;
+    private int time;
+    private bool perfect, easy;
 
-		public string TimeString {
-			get { return timeString; }
-		}
+    public string Name
+    {
+        get { return name; }
+        set { name = value; }
+    }
 
-		public int Time {
-			get { return time; }
-			set {
-				time=value;
-				timeString=GetTimeString(time);
-			}
-		}
+    public string TimeString
+    {
+        get { return timeString; }
+    }
 
-		public bool Perfect {
-			get { return perfect; }
-			set { perfect=value; }
-		}
+    public int Time
+    {
+        get { return time; }
+        set
+        {
+            time = value;
+            timeString = GetTimeString(time);
+        }
+    }
 
-		public bool Easy {
-			get { return easy; }
-			set { easy=value; }
-		}
+    public bool Perfect
+    {
+        get { return perfect; }
+        set { perfect = value; }
+    }
 
-		public Score(string name,int time,bool perfect,bool easy) {
-			this.name=name;
-			this.time=time;
-			this.perfect=perfect;
-			this.easy=easy;
+    public bool Easy
+    {
+        get { return easy; }
+        set { easy = value; }
+    }
 
-			timeString=GetTimeString(time);
-		}
+    public Score(string name, int time, bool perfect, bool easy)
+    {
+        this.name = name;
+        this.time = time;
+        this.perfect = perfect;
+        this.easy = easy;
 
-		public static String GetTimeString(int time) {
-			int milliseconds=(time%1000)/10;
-			int minutes=time/60000;
-			int seconds=time/1000-minutes*60;
+        timeString = GetTimeString(time);
+    }
 
-			return minutes+":"+(seconds<10?"0":"")+seconds+"."+(milliseconds<10?"0":"")+milliseconds;
-		}
-	}
+    public static String GetTimeString(int time)
+    {
+        int milliseconds = (time % 1000) / 10;
+        int minutes = time / 60000;
+        int seconds = time / 1000 - minutes * 60;
+
+        return minutes + ":" + (seconds < 10 ? "0" : "") + seconds + "." + (milliseconds < 10 ? "0" : "") + milliseconds;
+    }
 }

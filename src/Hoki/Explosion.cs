@@ -1,168 +1,183 @@
 using System;
-using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Graphics;
-using Microsoft.Xna.Framework.Audio;
-using SpriteUtilities;
 using FloatMath;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Audio;
+using Microsoft.Xna.Framework.Graphics;
+using SpriteUtilities;
 
-namespace Hoki {
-using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
-	/// <summary>
-	/// Explosion graphic effect
-	/// </summary>
-	public class Explosion : SpriteObject, Updateable {
-		private Particle[] particles;
-		private int liveParticles;	//Number of particles still alive
+using Device = Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 
-		public event EventHandler Die;
-		
-		public static SoundEffect Sound;
-		private bool spark;
+namespace Hoki;
+/// <summary>
+/// Explosion graphic effect
+/// </summary>
+public class Explosion : SpriteObject, Updateable
+{
+    private Particle[] particles;
+    private int liveParticles;  //Number of particles still alive
 
-		public Explosion(Device device,SpriteTexture tex,int numParticles,bool spark) : base(device,null) {
-			this.spark=spark;
-			particles=new Particle[numParticles];
-			liveParticles=numParticles;
+    public event EventHandler Die;
 
-			for (int i=0;i<numParticles;i++) {
-				if (spark)
-						particles[i]=new SparkParticle(device,tex);
-				else	particles[i]=new ExplosionParticle(device,tex);
-				particles[i].ID=i;
-				particles[i].Die+=new EventHandler(onParticleDie);
-				Add((SpriteObject)particles[i]);
-			}
+    public static SoundEffect Sound;
+    private bool spark;
 
-			if (!spark) Game.PlaySfx(Sound);
-		}
-		
-		private void onParticleDie(object sender, EventArgs e) {
-			particles[((Particle)sender).ID]=null;
-			Remove((TransformedObject)sender);
-			if (--liveParticles==0) Die(this,new EventArgs());
-		}
+    public Explosion(Device device, SpriteTexture tex, int numParticles, bool spark) : base(device, null)
+    {
+        this.spark = spark;
+        particles = new Particle[numParticles];
+        liveParticles = numParticles;
 
-		#region Updateable Members
-		public void Update(float elapsedTime) {
-			foreach (Updateable p in particles) if (p!=null) p.Update(elapsedTime);	//Update every non-null particle
-		}
-		#endregion
-		
-		/// <summary>
-		/// One particle in the explosion effect
-		/// </summary>
-		private class ExplosionParticle : SpriteObject, Updateable, Particle {
-			private const float
-				minInitAlpha=80,	//Minimum initial alpha value for particles
-				maxInitAlpha=120,	//Maximum initial alpha value for particles
-				initScatter=10,		//Radius within which to scatter the particles initially
-				alphaDecay=200,		//Rate of particle alpha decay, units/sec
-				scaleRate=1,		//Rate of particle scale increase, percentage points/sec
-				maxRotSpeed=1;		//Maximum rate of particle rotation, rad/sec
+        for (int i = 0; i < numParticles; i++)
+        {
+            if (spark)
+                particles[i] = new SparkParticle(device, tex);
+            else particles[i] = new ExplosionParticle(device, tex);
+            particles[i].ID = i;
+            particles[i].Die += new EventHandler(onParticleDie);
+            Add((SpriteObject)particles[i]);
+        }
 
-			private float rSpeed;
-			private int id;
+        if (!spark) Game.PlaySfx(Sound);
+    }
 
-			public event EventHandler Die;
+    private void onParticleDie(object sender, EventArgs e)
+    {
+        particles[((Particle)sender).ID] = null;
+        Remove((TransformedObject)sender);
+        if (--liveParticles == 0) Die(this, new EventArgs());
+    }
 
-			public ExplosionParticle(Device device,SpriteTexture tex) : base(device,tex) {
-				//Center the origin
-				origin.X=tex.Width/2;
-				origin.Y=tex.Height/2;
+    #region Updateable Members
+    public void Update(float elapsedTime)
+    {
+        foreach (Updateable p in particles) if (p != null) p.Update(elapsedTime);   //Update every non-null particle
+    }
+    #endregion
 
-				//Randomize
-				X=Rand.NextFloat(-initScatter,initScatter);
-				Y=Rand.NextFloat(-initScatter,initScatter);
-				Rotation=Rand.NextFloat(2*FMath.PI);
-				Alpha=Rand.NextFloat(minInitAlpha,maxInitAlpha);
-				rSpeed=Rand.NextFloat(-maxRotSpeed,maxRotSpeed);
-			}
+    /// <summary>
+    /// One particle in the explosion effect
+    /// </summary>
+    private class ExplosionParticle : SpriteObject, Updateable, Particle
+    {
+        private const float
+            minInitAlpha = 80,  //Minimum initial alpha value for particles
+            maxInitAlpha = 120, //Maximum initial alpha value for particles
+            initScatter = 10,       //Radius within which to scatter the particles initially
+            alphaDecay = 200,       //Rate of particle alpha decay, units/sec
+            scaleRate = 1,      //Rate of particle scale increase, percentage points/sec
+            maxRotSpeed = 1;        //Maximum rate of particle rotation, rad/sec
 
-			public int ID {
-				get { return id; }
-				set { id=value; }
-			}
+        private float rSpeed;
+        private int id;
 
-			#region Updateable Members
+        public event EventHandler Die;
 
-			public void Update(float elapsedTime) {
-				XScale+=scaleRate*elapsedTime;
-				YScale=XScale;
-				Rotation+=rSpeed*elapsedTime;
-				Alpha-=alphaDecay*elapsedTime;
+        public ExplosionParticle(Device device, SpriteTexture tex) : base(device, tex)
+        {
+            //Center the origin
+            origin.X = tex.Width / 2;
+            origin.Y = tex.Height / 2;
 
-				if (Alpha<=0) Die(this,new EventArgs());
-			}
+            //Randomize
+            X = Rand.NextFloat(-initScatter, initScatter);
+            Y = Rand.NextFloat(-initScatter, initScatter);
+            Rotation = Rand.NextFloat(2 * FMath.PI);
+            Alpha = Rand.NextFloat(minInitAlpha, maxInitAlpha);
+            rSpeed = Rand.NextFloat(-maxRotSpeed, maxRotSpeed);
+        }
 
-			#endregion
+        public int ID
+        {
+            get { return id; }
+            set { id = value; }
+        }
 
-			protected override void deviceDraw(Matrix trans) {
-				//Switch to an additive blend for the spark, then back to a regular blend
-				BlendState old=Renderer.Blend;
-				Renderer.Blend=BlendState.Additive;
-				base.deviceDraw(trans);
-				Renderer.Blend=old;
-			}
-		}
-		
-		/// <summary>
-		/// One particle in the spark effect
-		/// </summary>
-		private class SparkParticle : SpriteObject, Updateable, Particle {
-			private const float
-				minInitAlpha=255,	//Minimum initial alpha value for particles
-				maxInitAlpha=255,	//Maximum initial alpha value for particles
-				initScatter=8,		//Radius within which to scatter the particles initially
-				alphaDecay=600,		//Rate of particle alpha decay, units/sec
-				scaleRate=-0.1f,	//Rate of particle scale increase, percentage points/sec
-				maxRotSpeed=3;		//Maximum rate of particle rotation, rad/sec
+        #region Updateable Members
 
-			private float rSpeed;
-			private int id;
+        public void Update(float elapsedTime)
+        {
+            XScale += scaleRate * elapsedTime;
+            YScale = XScale;
+            Rotation += rSpeed * elapsedTime;
+            Alpha -= alphaDecay * elapsedTime;
 
-			private Vector2 move;
+            if (Alpha <= 0) Die(this, new EventArgs());
+        }
 
-			public event EventHandler Die;
+        #endregion
 
-			public SparkParticle(Device device,SpriteTexture tex) : base(device,tex) {
-				//Center the origin
-				origin.X=tex.Width/2;
-				origin.Y=tex.Height/2;
+        protected override void deviceDraw(Matrix trans)
+        {
+            //Switch to an additive blend for the spark, then back to a regular blend
+            BlendState old = Renderer.Blend;
+            Renderer.Blend = BlendState.Additive;
+            base.deviceDraw(trans);
+            Renderer.Blend = old;
+        }
+    }
 
-				//Randomize
-				X=Rand.NextFloat(-initScatter,initScatter);
-				Y=Rand.NextFloat(-initScatter,initScatter);
-				Rotation=Rand.NextFloat(2*FMath.PI);
-				Alpha=Rand.NextFloat(minInitAlpha,maxInitAlpha);
-				rSpeed=Rand.NextFloat(-maxRotSpeed,maxRotSpeed);
-				
-				move=new Vector2(X,Y);
-				move=((50+Rand.NextFloat(50))/move.Length())*move;
-			}
+    /// <summary>
+    /// One particle in the spark effect
+    /// </summary>
+    private class SparkParticle : SpriteObject, Updateable, Particle
+    {
+        private const float
+            minInitAlpha = 255, //Minimum initial alpha value for particles
+            maxInitAlpha = 255, //Maximum initial alpha value for particles
+            initScatter = 8,        //Radius within which to scatter the particles initially
+            alphaDecay = 600,       //Rate of particle alpha decay, units/sec
+            scaleRate = -0.1f,  //Rate of particle scale increase, percentage points/sec
+            maxRotSpeed = 3;        //Maximum rate of particle rotation, rad/sec
 
-			#region Updateable Members
+        private float rSpeed;
+        private int id;
 
-			public int ID {
-				get { return id; }
-				set { id=value; }
-			}
+        private Vector2 move;
 
-			public void Update(float elapsedTime) {
-				XScale+=scaleRate*elapsedTime;
-				YScale=XScale;
-				Rotation+=rSpeed*elapsedTime;
-				Alpha-=alphaDecay*elapsedTime;
-				Position+=move*elapsedTime;
+        public event EventHandler Die;
 
-				if (Alpha<=0) Die(this,new EventArgs());
-			}
+        public SparkParticle(Device device, SpriteTexture tex) : base(device, tex)
+        {
+            //Center the origin
+            origin.X = tex.Width / 2;
+            origin.Y = tex.Height / 2;
 
-			#endregion
-		}
+            //Randomize
+            X = Rand.NextFloat(-initScatter, initScatter);
+            Y = Rand.NextFloat(-initScatter, initScatter);
+            Rotation = Rand.NextFloat(2 * FMath.PI);
+            Alpha = Rand.NextFloat(minInitAlpha, maxInitAlpha);
+            rSpeed = Rand.NextFloat(-maxRotSpeed, maxRotSpeed);
 
-		private interface Particle {
-			int ID { get; set; }
-			event EventHandler Die;
-		}
-	}
+            move = new Vector2(X, Y);
+            move = ((50 + Rand.NextFloat(50)) / move.Length()) * move;
+        }
+
+        #region Updateable Members
+
+        public int ID
+        {
+            get { return id; }
+            set { id = value; }
+        }
+
+        public void Update(float elapsedTime)
+        {
+            XScale += scaleRate * elapsedTime;
+            YScale = XScale;
+            Rotation += rSpeed * elapsedTime;
+            Alpha -= alphaDecay * elapsedTime;
+            Position += move * elapsedTime;
+
+            if (Alpha <= 0) Die(this, new EventArgs());
+        }
+
+        #endregion
+    }
+
+    private interface Particle
+    {
+        int ID { get; set; }
+        event EventHandler Die;
+    }
 }

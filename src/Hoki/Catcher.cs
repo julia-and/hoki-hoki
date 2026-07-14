@@ -1,57 +1,61 @@
-using System;
-using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Graphics;
-using SpriteUtilities;
 using FloatMath;
+using Microsoft.Xna.Framework;
+using SpriteUtilities;
 
-namespace Hoki {
-using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
-	/// <summary>
-	/// Catches mines sent by a Launcher
-	/// </summary>
-	public class Catcher : SpriteObject {
-		private int turns;		//Number of 45° rotations
-		private Segment seg;	//Represents the front face, acts as a wall
+using Device = Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 
-		/// <summary>
-		/// Number of 45° rotations
-		/// </summary>
-		public int Turns {
-			get { return turns; }
-			set {
-				turns=value%8;
-				Rotation=value*FMath.PI/4;
-			}
-		}
+namespace Hoki;
+/// <summary>
+/// Catches mines sent by a Launcher
+/// </summary>
+public class Catcher : SpriteObject
+{
+    private int turns;      //Number of 45ï¿½ rotations
+    private Segment seg;    //Represents the front face, acts as a wall
 
-		public Segment Segment {
-			get { return seg; }
-		}
+    /// <summary>
+    /// Number of 45ï¿½ rotations
+    /// </summary>
+    public int Turns
+    {
+        get { return turns; }
+        set
+        {
+            turns = value % 8;
+            Rotation = value * FMath.PI / 4;
+        }
+    }
 
-		public Catcher(Device device,SpriteTexture tex) : base(device,tex) {
-            //Center the origin in the texture
-			origin.X=tex.Width/2;
-			origin.Y=tex.Height/2;
-		}
+    public Segment Segment
+    {
+        get { return seg; }
+    }
 
-		/// <summary>
-		/// Updates the Segment returned by Seg() to reflect the current transformations
-		/// </summary>
-		public void UpdateSeg() {
-			//Get half dimensions
-			float halfWidth=tex.Width/2;
-			float halfHeight=tex.Height/2;
+    public Catcher(Device device, SpriteTexture tex) : base(device, tex)
+    {
+        //Center the origin in the texture
+        origin.X = tex.Width / 2;
+        origin.Y = tex.Height / 2;
+    }
 
-			//Get corners in local space
-			Vector2 p1=new Vector2(halfWidth,halfHeight);
-			Vector2 p2=new Vector2(halfWidth,-halfHeight);
+    /// <summary>
+    /// Updates the Segment returned by Seg() to reflect the current transformations
+    /// </summary>
+    public void UpdateSeg()
+    {
+        //Get half dimensions
+        float halfWidth = tex.Width / 2;
+        float halfHeight = tex.Height / 2;
 
-			//Convert them to the parent (map's/zero'd layer's) coordinate space
-			LocalToParent(ref p1);
-			LocalToParent(ref p2);
+        //Get corners in local space
+        Vector2 p1 = new Vector2(halfWidth, halfHeight);
+        Vector2 p2 = new Vector2(halfWidth, -halfHeight);
 
-			//Put them in the seg
-			seg=new Segment(p1,p2,null);
-		}
-	}
+        //Convert them to the parent (map's/zero'd layer's) coordinate space
+        LocalToParent(ref p1);
+        LocalToParent(ref p2);
+
+        //Put them in the seg
+        seg = new Segment(p1, p2, null);
+    }
 }

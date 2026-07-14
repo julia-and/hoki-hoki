@@ -3,64 +3,71 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using SpriteUtilities;
 
-namespace Hoki {
-using Device=Microsoft.Xna.Framework.Graphics.GraphicsDevice;
-	/// <summary>
-	/// Summary description for Planet.
-	/// </summary>
-	public class Planet : TransformedObject, Updateable {
-		private PositionColoredTextured[] verts;
-		private Vector2 shiftRate;
-		private Texture2D tex;
-		private Game owner;
-		private float radius;
+using Device = Microsoft.Xna.Framework.Graphics.GraphicsDevice;
 
-		static int id;
-		private int myId;
+namespace Hoki;
+/// <summary>
+/// Summary description for Planet.
+/// </summary>
+public class Planet : TransformedObject, Updateable
+{
+    private PositionColoredTextured[] verts;
+    private Vector2 shiftRate;
+    private Texture2D tex;
+    private Game owner;
+    private float radius;
 
-		public Planet(Device device,Texture2D tex,SpriteTexture sphereTex,Game owner,int detail,float radius,float texrep,Vector2 shiftRate) : base(device) {
-			this.tex=tex;
-			this.shiftRate=shiftRate;
-			this.owner=owner;
-			this.radius=radius;
+    private static int id;
+    private int myId;
 
-			myId=id++;
+    public Planet(Device device, Texture2D tex, SpriteTexture sphereTex, Game owner, int detail, float radius, float texrep, Vector2 shiftRate) : base(device)
+    {
+        this.tex = tex;
+        this.shiftRate = shiftRate;
+        this.owner = owner;
+        this.radius = radius;
 
-			verts=new PositionColoredTextured[detail+2];
-			Microsoft.Xna.Framework.Color white=Microsoft.Xna.Framework.Color.White;
+        myId = id++;
 
-			verts[0]=new PositionColoredTextured(0,0,0,white,0.5f,0.5f);
-			for (int i=1;i<=detail+1;i++) {
-				double angle=((double)i)/detail*2*Math.PI;
-				Vector2 v=new Vector2((float)Math.Cos(angle),(float)Math.Sin(angle));
-				verts[i]=new PositionColoredTextured(radius*v.X,radius*v.Y,0,white,(1f+v.X*texrep)/2f,(1f+v.Y*texrep)/2f);
-			}
+        verts = new PositionColoredTextured[detail + 2];
+        Microsoft.Xna.Framework.Color white = Microsoft.Xna.Framework.Color.White;
 
-			SpriteObject sphere=new SpriteObject(device,sphereTex);
-			sphere.Width=sphere.Height=2*radius;
-			sphere.X=-radius;
-			sphere.Y=-radius;
-			Add(sphere);
-		}
+        verts[0] = new PositionColoredTextured(0, 0, 0, white, 0.5f, 0.5f);
+        for (int i = 1; i <= detail + 1; i++)
+        {
+            double angle = ((double)i) / detail * 2 * Math.PI;
+            Vector2 v = new Vector2((float)Math.Cos(angle), (float)Math.Sin(angle));
+            verts[i] = new PositionColoredTextured(radius * v.X, radius * v.Y, 0, white, (1f + v.X * texrep) / 2f, (1f + v.Y * texrep) / 2f);
+        }
 
-		#region Updateable Members
-		public void Update(float elapsedTime) {
-			//HACK: control visibility for speed. This is really bad code, but it's faster than using localToGlobal.
-			Vector2 screenPos=parent.Parent.Position+position;
-			Visible=(screenPos.X+radius>0 && screenPos.X-radius<owner.ClientSize.X && screenPos.Y+radius>0 && screenPos.Y-radius<owner.ClientSize.Y);
+        SpriteObject sphere = new SpriteObject(device, sphereTex);
+        sphere.Width = sphere.Height = 2 * radius;
+        sphere.X = -radius;
+        sphere.Y = -radius;
+        Add(sphere);
+    }
 
-			//Slide the texture along if visible.
-			if (Visible) {
-				for (int i=0;i<verts.Length;i++) {
-					verts[i].Tu+=shiftRate.X*elapsedTime;
-					verts[i].Tv+=shiftRate.Y*elapsedTime;
-				}
-			}
-		}
-		#endregion
+    #region Updateable Members
+    public void Update(float elapsedTime)
+    {
+        //HACK: control visibility for speed. This is really bad code, but it's faster than using localToGlobal.
+        Vector2 screenPos = parent.Parent.Position + position;
+        Visible = (screenPos.X + radius > 0 && screenPos.X - radius < owner.ClientSize.X && screenPos.Y + radius > 0 && screenPos.Y - radius < owner.ClientSize.Y);
 
-		protected override void deviceDraw(Matrix trans) {
-			Renderer.DrawFan(trans,tex,verts);
-		}
-	}
+        //Slide the texture along if visible.
+        if (Visible)
+        {
+            for (int i = 0; i < verts.Length; i++)
+            {
+                verts[i].Tu += shiftRate.X * elapsedTime;
+                verts[i].Tv += shiftRate.Y * elapsedTime;
+            }
+        }
+    }
+    #endregion
+
+    protected override void deviceDraw(Matrix trans)
+    {
+        Renderer.DrawFan(trans, tex, verts);
+    }
 }

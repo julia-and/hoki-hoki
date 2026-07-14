@@ -1,52 +1,58 @@
-using System;
 using System.Collections;
 using SpriteUtilities;
 
-namespace Hoki {
-	/// <summary>
-	/// A recorded input sequence
-	/// </summary>
-	public class GhostRecorder : Updateable {
-		private Queue inputs;	//Queue of inputs recorded
-		private int frame;		//Frames passed since recording began
+namespace Hoki;
 
-		public GhostRecorder(Controller controller) {
-			//Make a queue to hold inputs
-			inputs=new Queue();
+/// <summary>
+/// A recorded input sequence
+/// </summary>
+public class GhostRecorder : Updateable
+{
+    private Queue inputs;   //Queue of inputs recorded
+    private int frame;      //Frames passed since recording began
 
-			//Capture the controller's events
-			controller.ControlDown+=new ControlEventHandler(onControlDown);
-			controller.ControlUp+=new ControlEventHandler(onControlUp);
-		}
+    public GhostRecorder(Controller controller)
+    {
+        //Make a queue to hold inputs
+        inputs = new Queue();
 
-		/// <summary>
-		/// Compiles the ghost and returns it as a string. This will clear the input queue.
-		/// </summary>
-		public string Compile() {
-			string output="";
-			while (inputs.Count>0) {
-				Input i=(Input)inputs.Dequeue();
-				int down=0;
-				if (i.Down) down=1;
-				output+="\n"+i.Frame+","+(int)i.Control+","+down;
-			}
-			return output;
-		}
+        //Capture the controller's events
+        controller.ControlDown += new ControlEventHandler(onControlDown);
+        controller.ControlUp += new ControlEventHandler(onControlUp);
+    }
 
-		#region Updateable Members
-		public void Update(float elapsedTime) {
-			frame++;
-		}
-		#endregion
+    /// <summary>
+    /// Compiles the ghost and returns it as a string. This will clear the input queue.
+    /// </summary>
+    public string Compile()
+    {
+        string output = "";
+        while (inputs.Count > 0)
+        {
+            Input i = (Input)inputs.Dequeue();
+            int down = 0;
+            if (i.Down) down = 1;
+            output += "\n" + i.Frame + "," + (int)i.Control + "," + down;
+        }
+        return output;
+    }
 
-		#region event handlers
-		private void onControlDown(object sender, ControlEventArgs e) {
-			inputs.Enqueue(new Input(frame,e.Control,true));
-		}
+    #region Updateable Members
+    public void Update(float elapsedTime)
+    {
+        frame++;
+    }
+    #endregion
 
-		private void onControlUp(object sender, ControlEventArgs e) {
-			inputs.Enqueue(new Input(frame,e.Control,false));
-		}
-		#endregion
-	}
+    #region event handlers
+    private void onControlDown(object sender, ControlEventArgs e)
+    {
+        inputs.Enqueue(new Input(frame, e.Control, true));
+    }
+
+    private void onControlUp(object sender, ControlEventArgs e)
+    {
+        inputs.Enqueue(new Input(frame, e.Control, false));
+    }
+    #endregion
 }

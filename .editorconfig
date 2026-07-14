@@ -1,0 +1,40 @@
+root = true
+
+[*]
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{cs,csproj,props,targets,slnx}]
+indent_style = space
+indent_size = 4
+
+[*.csproj]
+indent_size = 2
+
+[*.slnx]
+indent_size = 2
+
+[*.cs]
+# Usings
+dotnet_sort_system_directives_first = true
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_diagnostic.IDE0005.severity = warning
+
+# Namespaces
+csharp_style_namespace_declarations = file_scoped:warning
+
+# New lines (Allman)
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+
+# Spacing
+csharp_space_after_comma = true
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_space_after_cast = false
+
+# Misc style
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+dotnet_diagnostic.IDE0004.severity = warning

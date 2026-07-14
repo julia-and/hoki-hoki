@@ -1,27 +1,31 @@
 using System;
 using Microsoft.Xna.Framework.Input;
 
-namespace Hoki {
-	//Minimal stand-ins for the WinForms key event types the input plumbing was built on.
-	//Game.Update polls the keyboard and raises these; KeyboardController consumes them unchanged.
+namespace Hoki;
 
-	public delegate void KeyEventHandler(object sender,KeyEventArgs e);
+//Minimal stand-ins for the WinForms key event types the input plumbing was built on.
+//Game.Update polls the keyboard and raises these; KeyboardController consumes them unchanged.
 
-	public class KeyEventArgs : EventArgs {
-		public Keys KeyCode;
+public delegate void KeyEventHandler(object sender, KeyEventArgs e);
 
-		public KeyEventArgs(Keys keyCode) {
-			KeyCode=keyCode;
-		}
-	}
+public class KeyEventArgs : EventArgs
+{
+    public Keys KeyCode;
 
-	public delegate void KeyPressEventHandler(object sender,KeyPressEventArgs e);
+    public KeyEventArgs(Keys keyCode)
+    {
+        KeyCode = keyCode;
+    }
+}
 
-	public class KeyPressEventArgs : EventArgs {
-		public char KeyChar;
+public delegate void KeyPressEventHandler(object sender, KeyPressEventArgs e);
 
-		public KeyPressEventArgs(char keyChar) {
-			KeyChar=keyChar;
-		}
-	}
+public class KeyPressEventArgs : EventArgs
+{
+    public char KeyChar;
+
+    public KeyPressEventArgs(char keyChar)
+    {
+        KeyChar = keyChar;
+    }
 }
