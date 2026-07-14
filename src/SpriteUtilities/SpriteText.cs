@@ -129,8 +129,21 @@ public class SpriteText : SpriteObject
         //SpriteBatch projects in viewport pixels, not the logical ortho projection the
         //rest of the scene uses — scale logical coords up to match.
         float viewScale = Renderer.Device.Viewport.Width / (float)Renderer.LogicalWidth;
+
+        //Layout is measured with the logical-size font, but glyphs rasterized at logical
+        //size look blurry once the matrix magnifies them. Re-rasterize at physical size
+        //and draw scaled back down so glyph pixels map 1:1 to screen pixels.
+        SpriteFontBase drawFont = font;
+        Vector2 drawScale = Vector2.One;
+        if (viewScale != 1f && font is DynamicSpriteFont dynamicFont)
+        {
+            float physicalSize = MathF.Max(1f, MathF.Round(dynamicFont.FontSize * viewScale));
+            drawFont = dynamicFont.FontSystem.GetFont(physicalSize);
+            drawScale = new Vector2(dynamicFont.FontSize / physicalSize);
+        }
+
         Renderer.Batch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, null, null, null, null, trans * Matrix.CreateScale(viewScale));
-        font.DrawText(Renderer.Batch, drawn, pos, ColorX.FromArgb((int)alpha, color));
+        drawFont.DrawText(Renderer.Batch, drawn, pos, ColorX.FromArgb((int)alpha, color), scale: drawScale);
         Renderer.Batch.End();
     }
 }
